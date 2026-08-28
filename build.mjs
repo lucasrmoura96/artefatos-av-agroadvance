@@ -402,6 +402,8 @@ const IC = {
   ok: '<svg width="16" height="16" viewBox="0 0 18 18" fill="none" aria-hidden="true"><circle cx="9" cy="9" r="7" stroke="currentColor" stroke-width="1.5"/><path d="M5.8 9.2l2.1 2.1 4.3-4.3" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   aviso: '<svg width="16" height="16" viewBox="0 0 18 18" fill="none" aria-hidden="true"><path d="M9 6.4v3.8M9 12.5v.2" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><path d="M7.6 2.6L1.4 13.4a1.6 1.6 0 001.4 2.4h12.4a1.6 1.6 0 001.4-2.4L10.4 2.6a1.6 1.6 0 00-2.8 0z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>',
   proibido: '<svg width="16" height="16" viewBox="0 0 18 18" fill="none" aria-hidden="true"><circle cx="9" cy="9" r="7" stroke="currentColor" stroke-width="1.5"/><path d="M4.4 13.6L13.6 4.4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>',
+  guia: '<svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M3.2 5.4A2.2 2.2 0 015.4 3.2h9.2a2.2 2.2 0 012.2 2.2v6.2a2.2 2.2 0 01-2.2 2.2H8l-4.8 3.2v-3.2a2.2 2.2 0 01-.8-1.7V5.4z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M7.4 7.6h5.2M7.4 10.4h3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>',
+  fecha: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>',
   raio: '<svg width="16" height="16" viewBox="0 0 18 18" fill="none" aria-hidden="true"><path d="M10 1.6L4 10h3.6l-1 6.4L13 8h-3.6l.6-6.4z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>',
 };
 
@@ -537,7 +539,7 @@ if (GATILHOS.aovivo) {
 /* ==================================================================== *
  * 10. Casca
  * ==================================================================== */
-function pagina({ titulo, desc, atual, corpo, base, indiceJson, manualJson }) {
+function pagina({ titulo, desc, atual, corpo, base, indiceJson }) {
   const nav = [
     ...FORMATOS.map((f) => ({ href: `${base}${f.slug}/`, nome: f.nav, id: f.slug })),
     { href: `${base}equipamentos/`, nome: 'Equipamentos', id: 'equipamentos' },
@@ -601,8 +603,30 @@ ${corpo}
 
 <div id="toast" role="status" aria-live="polite"><span class="ok">${IC.check}</span><span class="msg"></span></div>
 <button id="aoTopo" type="button" aria-label="Voltar ao topo">${IC.topo}</button>
+${atual === null ? '' : `
+<button class="fab" id="fabGuia" type="button" aria-expanded="false" aria-controls="gaveta">
+  ${IC.guia}
+  <span class="fab-rotulo">Guia de diagnóstico</span>
+</button>
 
-<script>window.AV_INDICE=${indiceJson};${manualJson ? `window.AV_MANUAL=${manualJson};window.AV_AREAS=${JSON.stringify(AREAS)};window.AV_BOT=${JSON.stringify(BOT)};window.AV_SOLUCOES=${JSON.stringify(SOLUCOES)};window.AV_ORIGENS=${JSON.stringify(ORIGENS)};` : ''}</script>
+<div class="gaveta" id="gaveta" role="dialog" aria-modal="true" aria-label="Guia de diagnóstico" hidden>
+  <div class="gaveta-painel">
+    <div class="gaveta-cab">
+      <span class="gaveta-quem">
+        <b>Guia de diagnóstico</b>
+        <small>Sem IA. Só o que está nos documentos.</small>
+      </span>
+      <button class="gaveta-fecha" id="gavetaFecha" type="button" aria-label="Fechar o guia">${IC.fecha}</button>
+    </div>
+    <div class="guia-topo">
+      <div class="guia-trilha" id="guiaTrilha" aria-live="polite"></div>
+      <button class="guia-voltar" id="guiaVoltar" type="button" hidden>Voltar</button>
+    </div>
+    <div class="guia-palco" id="guiaPalco"></div>
+  </div>
+</div>`}
+
+<script>window.AV_BASE=${JSON.stringify(base)};window.AV_INDICE=${indiceJson};window.AV_MANUAL=${JSON.stringify(MANUAL)};window.AV_AREAS=${JSON.stringify(AREAS)};window.AV_BOT=${JSON.stringify(BOT)};window.AV_SOLUCOES=${JSON.stringify(SOLUCOES)};window.AV_ORIGENS=${JSON.stringify(ORIGENS)};</script>
 <script src="${base}assets/site.js?v=${V_JS}"></script>
 `;
 }
@@ -643,7 +667,6 @@ function home() {
     corpo,
     base: './',
     indiceJson: indicePara('./'),
-    manualJson: JSON.stringify(MANUAL),
   });
 }
 

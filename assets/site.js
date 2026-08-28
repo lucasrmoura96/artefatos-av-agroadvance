@@ -89,6 +89,7 @@
   var AREAS = window.AV_AREAS || {};
   var BOT = window.AV_BOT || null;
   var SOL = window.AV_SOLUCOES || {};
+  var BASE = window.AV_BASE || './';
   var ORIG = window.AV_ORIGENS || {};
   var palco = document.getElementById('guiaPalco');
 
@@ -332,7 +333,7 @@
     function rodape(extra) {
       var c = cfgAtual();
       return '<div class="cartao-pe">' +
-        '<a class="btn btn-primary" href="./' + c.cfg.ancora + '">Abrir o manual</a>' +
+        '<a class="btn btn-primary" href="' + BASE + c.cfg.ancora + '">Abrir o manual</a>' +
         '<button class="btn btn-outline" type="button" data-vai="paraIA">Levar para a IA</button>' +
         (extra || '') +
         '<button class="btn btn-ghost" type="button" data-vai="reiniciar">Começar de novo</button>' +
@@ -429,7 +430,7 @@
         '\u201c' + st.sintoma + '\u201d, resolvido. \u00c9 assim que o manual deixa de mandar gente adivinhar.</p>' +
         checados() +
         '<div class="cartao-pe">' +
-          '<a class="btn btn-primary" href="./' + cfgAtual().cfg.ancora + '">Abrir o manual</a>' +
+          '<a class="btn btn-primary" href="' + BASE + cfgAtual().cfg.ancora + '">Abrir o manual</a>' +
           '<button class="btn btn-ghost" type="button" data-vai="reiniciar">Come\u00e7ar de novo</button>' +
         '</div></div>');
     };
@@ -541,13 +542,48 @@
       });
       if (st.equip && SOL[st.equip]) l.push('- Equipamento suspeito: ' + SOL[st.equip].nome);
       if (st.sintoma) l.push('- Sintoma do manual que tentei, sem resolver: ' + st.sintoma);
-      window.location.href = './' + c.formato.slug + '/?cfg=' + encodeURIComponent(c.cfg.nome) +
+      window.location.href = BASE + c.formato.slug + '/?cfg=' + encodeURIComponent(c.cfg.nome) +
         '&area=' + encodeURIComponent(m.rotulo) + '&trilha=' + encodeURIComponent(l.join('\n')) + '#ia';
     };
 
     btnVoltar.addEventListener('click', voltar);
     zera();
   }
+
+  /* ================================================================ *
+   * Painel flutuante do guia. Fora do bloco do motor de proposito:
+   * o botao responde mesmo se o guia nao inicializar.
+   * ================================================================ */
+  (function gavetaDoGuia() {
+    var fab = document.getElementById('fabGuia');
+    var gaveta = document.getElementById('gaveta');
+    if (!fab || !gaveta) return;
+    var fechaBtn = document.getElementById('gavetaFecha');
+
+    function abre() {
+      gaveta.hidden = false;
+      fab.setAttribute('aria-expanded', 'true');
+      document.body.style.overflow = 'hidden';
+      setTimeout(function () {
+        var b = gaveta.querySelector('.escolha');
+        if (b) b.focus();
+      }, 60);
+    }
+
+    function fecha() {
+      gaveta.hidden = true;
+      fab.setAttribute('aria-expanded', 'false');
+      document.body.style.overflow = '';
+      fab.focus();
+    }
+
+    fab.addEventListener('click', function () { gaveta.hidden ? abre() : fecha(); });
+    if (fechaBtn) fechaBtn.addEventListener('click', fecha);
+    gaveta.addEventListener('click', function (ev) { if (ev.target === gaveta) fecha(); });
+    document.addEventListener('keydown', function (ev) {
+      if (ev.key === 'Escape' && !gaveta.hidden) { ev.preventDefault(); fecha(); }
+    });
+  })();
 
   /* ================================================================ *
    * Abas de configuração (página de formato)

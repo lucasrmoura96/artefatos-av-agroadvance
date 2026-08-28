@@ -767,3 +767,97 @@ footer a:hover{color:var(--brand-green-dark);border-color:var(--brand-green-dark
   .sint-meta{display:none}
   .passos li{padding:10px 11px 10px 40px}
 }
+
+/* ==========================================================================
+   GUIA FLUTUANTE — mesmo motor da home, disponível em qualquer página
+   ========================================================================== */
+.fab{
+  position:fixed;right:20px;bottom:20px;z-index:70;
+  display:flex;align-items:center;gap:0;cursor:pointer;
+  height:50px;padding:0 15px;border-radius:var(--r-pill);
+  background:var(--brand-navy);color:#fff;
+  box-shadow:0 8px 24px -8px rgba(20,44,70,.5);
+  transition:gap .26s var(--mola),padding .26s var(--mola),background .18s,box-shadow .22s,transform .2s var(--mola);
+}
+[data-theme="dark"] .fab{
+  background:var(--brand-green-dark);color:#052A11;
+  box-shadow:0 8px 24px -8px rgba(0,0,0,.7);
+}
+.fab:hover{background:var(--brand-navy-soft);box-shadow:0 12px 30px -8px rgba(20,44,70,.55);transform:translateY(-2px)}
+[data-theme="dark"] .fab:hover{background:var(--brand-green)}
+.fab:active{transform:translateY(0)}
+.fab svg{flex:0 0 auto}
+
+/* o rótulo aparece no hover: fechado ocupa pouco, aberto explica */
+.fab-rotulo{
+  max-width:0;overflow:hidden;white-space:nowrap;
+  font-size:var(--t-sm);font-weight:600;
+  transition:max-width .3s var(--mola),margin-left .3s var(--mola);
+}
+.fab:hover .fab-rotulo,.fab:focus-visible .fab-rotulo{max-width:180px;margin-left:9px}
+
+/* com o guia aberto, o botão vira "fechar" discreto */
+.fab[aria-expanded="true"]{background:var(--c-surface);color:var(--c-muted);box-shadow:var(--sh-2)}
+[data-theme="dark"] .fab[aria-expanded="true"]{background:var(--c-surface-2);color:var(--c-text)}
+
+/* o "voltar ao topo" sai da frente do botão do guia */
+#aoTopo{bottom:82px}
+
+/* ---------- gaveta ---------- */
+.gaveta{
+  position:fixed;inset:0;z-index:80;
+  background:var(--c-overlay);backdrop-filter:blur(3px);
+  display:flex;align-items:flex-end;justify-content:flex-end;
+  padding:16px;
+  animation:gavetaFade .18s ease-out;
+}
+.gaveta[hidden]{display:none}
+@keyframes gavetaFade{from{opacity:0}}
+
+.gaveta-painel{
+  width:min(440px,100%);max-height:min(86vh,720px);
+  display:flex;flex-direction:column;
+  background:var(--c-surface);border:1px solid var(--c-border-strong);
+  border-radius:var(--r-xl);box-shadow:var(--sh-modal);overflow:hidden;
+  animation:gavetaSobe .28s var(--mola);
+}
+@keyframes gavetaSobe{from{opacity:0;transform:translateY(18px) scale(.98)}}
+
+.gaveta-cab{
+  display:flex;align-items:center;gap:12px;flex:0 0 auto;
+  padding:15px 14px 15px 18px;border-bottom:1px solid var(--c-border);
+  background:var(--brand-navy);color:#fff;
+}
+[data-theme="dark"] .gaveta-cab{background:var(--c-surface-2);color:var(--c-text)}
+.gaveta-quem{flex:1;min-width:0;line-height:1.25}
+.gaveta-quem b{display:block;font-family:var(--fd);font-size:15px;font-weight:600;letter-spacing:-.018em}
+.gaveta-quem small{display:block;font-size:11px;opacity:.72;margin-top:1px}
+.gaveta-fecha{
+  flex:0 0 auto;width:32px;height:32px;border-radius:var(--r-sm);cursor:pointer;
+  display:grid;place-items:center;color:inherit;opacity:.72;
+  transition:background .16s,opacity .16s;
+}
+.gaveta-fecha:hover{background:rgba(255,255,255,.14);opacity:1}
+[data-theme="dark"] .gaveta-fecha:hover{background:rgba(255,255,255,.08)}
+
+/* dentro da gaveta o guia rola; a trilha fica fixa no topo */
+.gaveta .guia-topo{flex:0 0 auto}
+.gaveta .guia-palco{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain}
+.gaveta .cartao{padding:20px 18px 20px}
+.gaveta .cartao-titulo{font-size:20px}
+.gaveta .escolha{flex:1 1 100%}
+.gaveta .escolhas-grade{grid-template-columns:1fr}
+.gaveta .cartao-pe .btn{flex:1 1 100%;justify-content:center}
+
+@media (max-width:600px){
+  .fab{right:14px;bottom:14px;height:46px;padding:0 13px}
+  .fab-rotulo{display:none}
+  #aoTopo{bottom:70px;right:14px}
+  .gaveta{padding:0;align-items:stretch}
+  .gaveta-painel{
+    width:100%;max-height:100%;height:100%;
+    border-radius:0;border:0;
+  }
+  .gaveta-painel{animation:gavetaSobeCheio .3s var(--mola)}
+  @keyframes gavetaSobeCheio{from{transform:translateY(26px);opacity:0}}
+}
