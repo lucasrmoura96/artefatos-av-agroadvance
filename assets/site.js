@@ -82,119 +82,346 @@
   });
 
   /* ================================================================ *
-   * Triagem rápida (home): configuração -> área -> suspeitos
+   * GUIA DE DIAGNÓSTICO — árvore de decisão, sem IA.
+   * Percorre a cadeia de sinal um equipamento por vez, que é como se
+   * isola problema de AV. Tudo o que ele afirma sai dos documentos.
    * ================================================================ */
   var MANUAL = window.AV_MANUAL || null;
   var AREAS = window.AV_AREAS || {};
-  var optCfg = document.getElementById('optCfg');
+  var BOT = window.AV_BOT || null;
+  var fluxo = document.getElementById('botFluxo');
 
-  if (MANUAL && optCfg) {
-    var passo2 = document.getElementById('passo2');
-    var optArea = document.getElementById('optArea');
-    var saida = document.getElementById('triSaida');
-    var escolha = { fmt: null, cfg: null, area: null };
+  if (MANUAL && BOT && fluxo) {
+    var btnReset = document.getElementById('botReset');
+    var st = null;
+
+    function zera() {
+      st = { fmt: null, cfg: null, area: null, i: 0, caminho: [], atalhoFeito: false };
+      fluxo.innerHTML = '';
+      if (btnReset) btnReset.hidden = true;
+      perguntaCfg();
+    }
+
+    /* ---------- montagem das mensagens ---------- */
+    function bolha(html, classe) {
+      var d = document.createElement('div');
+      d.className = 'msg ' + (classe || 'msg-bot');
+      d.innerHTML = html;
+      fluxo.appendChild(d);
+      return d;
+    }
+
+    function eu(texto) {
+      bolha('<span class="msg-corpo">' + texto + '</span>', 'msg-eu');
+    }
+
+    // desativa os botões da rodada anterior: o histórico não deve ser clicável
+    function congela() {
+      fluxo.querySelectorAll('.opts').forEach(function (o) {
+        if (o.dataset.viva === '1') {
+          o.dataset.viva = '0';
+          o.querySelectorAll('button').forEach(function (b) { b.disabled = true; });
+        }
+      });
+    }
+
+    function opcoes(itens) {
+      var box = document.createElement('div');
+      box.className = 'opts';
+      box.dataset.viva = '1';
+      itens.forEach(function (it) {
+        if (it.grupo) {
+          var g = document.createElement('span');
+          g.className = 'opts-grupo';
+          g.textContent = it.grupo;
+          box.appendChild(g);
+          return;
+        }
+        var b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'opt-bot' + (it.tom ? ' tom-' + it.tom : '');
+        b.innerHTML = it.sub
+          ? '<b>' + it.rotulo + '</b><small>' + it.sub + '</small>'
+          : it.rotulo;
+        b.addEventListener('click', function () {
+          congela();
+          eu(it.eco || it.rotulo);
+          it.acao();
+          desce();
+        });
+        box.appendChild(b);
+      });
+      fluxo.appendChild(box);
+      desce();
+      return box;
+    }
+
+    function desce() {
+      if (reduzMovimento) return;
+      var ultimo = fluxo.lastElementChild;
+      if (ultimo) ultimo.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
 
     function achaCfg() {
-      var f = MANUAL.filter(function (x) { return x.slug === escolha.fmt; })[0];
-      return f ? { formato: f, cfg: f.cfgs[escolha.cfg] } : null;
+      var f = MANUAL.filter(function (x) { return x.slug === st.fmt; })[0];
+      return f ? { formato: f, cfg: f.cfgs[st.cfg] } : null;
     }
 
-    function pintaAreas() {
+    /* ---------- 1. configuração ---------- */
+    function perguntaCfg() {
+      bolha('<span class="msg-corpo">Vamos achar o ponto. <b>Em que configuração a aula ou o evento está rodando?</b></span>');
+      var itens = [];
+      MANUAL.forEach(function (f) {
+        itens.push({ grupo: f.nav });
+        f.cfgs.forEach(function (c, i) {
+          itens.push({
+            rotulo: c.nome,
+            acao: function () {
+              st.fmt = f.slug; st.cfg = i;
+              if (btnReset) btnReset.hidden = false;
+              perguntaArea();
+            },
+          });
+        });
+      });
+      opcoes(itens);
+    }
+
+    /* ---------- 2. área do sintoma ---------- */
+    function perguntaArea() {
       var c = achaCfg();
-      if (!c) return;
-      // só as áreas que existem nessa configuração, na ordem da cadeia
+      bolha('<span class="msg-corpo"><b>Onde está o problema?</b> Escolha pelo que a pessoa está sentindo, não pelo equipamento.</span>');
       var vistas = [];
-      c.cfg.etapas.forEach(function (e) {
-        if (vistas.indexOf(e.area) < 0) vistas.push(e.area);
-      });
-      optArea.innerHTML = vistas.map(function (a) {
+      c.cfg.etapas.forEach(function (e) { if (vistas.indexOf(e.area) < 0) vistas.push(e.area); });
+      opcoes(vistas.map(function (a) {
         var meta = AREAS[a] || { rotulo: a, desc: '' };
-        return '<button type="button" class="opt opt-area" data-area="' + a + '"' +
-          (escolha.area === a ? ' aria-pressed="true"' : '') + '>' +
-          '<b>' + meta.rotulo + '</b><small>' + meta.desc + '</small></button>';
-      }).join('');
-      passo2.hidden = false;
+        return {
+          rotulo: meta.rotulo, sub: meta.desc, eco: meta.rotulo,
+          acao: function () { st.area = a; st.i = 0; st.caminho = []; atalhoOuCadeia(); },
+        };
+      }));
     }
 
-    function pintaSaida() {
-      var c = achaCfg();
-      if (!c || !escolha.area) { saida.hidden = true; return; }
+    /* ---------- 3. atalho documentado, se houver ---------- */
+    function atalhoOuCadeia() {
+      var at = BOT.atalhos.filter(function (a) {
+        return a.fmt === st.fmt && a.area === st.area;
+      })[0];
 
-      var etapas = c.cfg.etapas.filter(function (e) { return e.area === escolha.area; });
-      var ativos = [];
-      var fora = [];
-      etapas.forEach(function (e) {
-        e.mods.forEach(function (m) {
-          (m.estado === 'off' ? fora : ativos).push({ etapa: e.rotulo, mod: m });
-        });
-      });
-
-      // o que não entra na configuração toda, não só nesta área
-      var foraGeral = [];
-      c.cfg.etapas.forEach(function (e) {
-        e.mods.forEach(function (m) {
-          if (m.estado === 'off' && foraGeral.indexOf(m.nome) < 0) foraGeral.push(m.nome);
-        });
-      });
-
-      var meta = AREAS[escolha.area] || { rotulo: escolha.area };
-      var n = 0;
-      var listaAtivos = ativos.map(function (x) {
-        n++;
-        var tag = x.mod.estado === 'live' ? 'Ao vivo' : (x.mod.estado === 'bkp' ? 'Eventual' : 'Em uso');
-        return '<li class="susp" data-s="' + x.mod.estado + '">' +
-          '<span class="ord">' + n + '</span>' +
-          '<span class="susp-txt"><span class="susp-nome">' + x.mod.nome + '</span>' +
-          '<span class="susp-papel">' + x.etapa + (x.mod.papel ? ' · ' + x.mod.papel : '') + '</span></span>' +
-          '<span class="susp-tag t-' + x.mod.estado + '">' + tag + '</span></li>';
-      }).join('');
-
-      saida.innerHTML =
-        '<div class="tri-res">' +
-          '<div class="tri-res-cab">' +
-            '<span class="eyebrow">' + meta.rotulo + ' · ' + c.cfg.nome + '</span>' +
-            '<h3>' + (ativos.length ? 'Verifique nesta ordem' : 'Nada em uso nesta área') + '</h3>' +
-          '</div>' +
-          (ativos.length
-            ? '<ol class="susps">' + listaAtivos + '</ol>'
-            : '<p class="tri-nada">Nesta configuração esta etapa não existe — não há o que investigar aqui. ' +
-              'Se o sintoma é real, ele está em outra área da cadeia.</p>') +
-          (fora.length ? '<p class="tri-fora"><b>Nesta área, não investigue:</b> ' +
-            fora.map(function (x) { return x.mod.nome; }).join(', ') + '.</p>' : '') +
-          (foraGeral.length ? '<p class="tri-fora tri-fora-geral"><b>Fora desta configuração como um todo:</b> ' +
-            foraGeral.join(', ') + '.</p>' : '') +
-          '<div class="tri-res-pe">' +
-            '<a class="btn btn-primary" href="./' + c.cfg.ancora + '">Abrir o manual completo</a>' +
-            '<a class="btn btn-ghost" href="./' + c.formato.slug + '/#ia">Não é nada disso · levar para a IA</a>' +
-          '</div>' +
-        '</div>';
-      saida.hidden = false;
-    }
-
-    optCfg.addEventListener('click', function (ev) {
-      var b = ev.target.closest('button[data-cfg]');
-      if (!b) return;
-      optCfg.querySelectorAll('button').forEach(function (x) { x.removeAttribute('aria-pressed'); });
-      b.setAttribute('aria-pressed', 'true');
-      escolha.fmt = b.getAttribute('data-fmt');
-      escolha.cfg = Number(b.getAttribute('data-cfg'));
-      escolha.area = null;
-      pintaAreas();
-      saida.hidden = true;
-      if (!reduzMovimento) passo2.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-    });
-
-    optArea.addEventListener('click', function (ev) {
-      var b = ev.target.closest('button[data-area]');
-      if (!b) return;
-      optArea.querySelectorAll('button').forEach(function (x) { x.removeAttribute('aria-pressed'); });
-      b.setAttribute('aria-pressed', 'true');
-      escolha.area = b.getAttribute('data-area');
-      pintaSaida();
-      if (!reduzMovimento) {
-        setTimeout(function () { saida.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }, 60);
+      if (at && !st.atalhoFeito) {
+        st.atalhoFeito = true;
+        bolha('<span class="msg-corpo">' + at.pergunta + '</span>');
+        opcoes([
+          {
+            rotulo: 'Sim', tom: 'sim', eco: 'Sim',
+            acao: function () {
+              if (at.simTipo === 'resolvido') mostraResolvido(at.simRef);
+              else if (at.simTipo === 'gatilhos') mostraGatilhos();
+            },
+          },
+          {
+            rotulo: 'Não', tom: 'nao', eco: 'Não',
+            acao: function () {
+              if (at.naoNota) bolha('<span class="msg-corpo">' + at.naoNota + '</span>');
+              andaCadeia();
+            },
+          },
+        ]);
+        return;
       }
-    });
+      andaCadeia();
+    }
+
+    /* ---------- suspeitos da área, na ordem do sinal ---------- */
+    function suspeitosDaArea() {
+      var c = achaCfg();
+      var lista = [];
+      c.cfg.etapas.filter(function (e) { return e.area === st.area; }).forEach(function (e) {
+        e.mods.forEach(function (m) {
+          if (m.estado !== 'off') lista.push({ etapa: e.rotulo, mod: m });
+        });
+      });
+      return lista;
+    }
+
+    function foraDaArea() {
+      var c = achaCfg();
+      var f = [];
+      c.cfg.etapas.filter(function (e) { return e.area === st.area; }).forEach(function (e) {
+        e.mods.forEach(function (m) { if (m.estado === 'off') f.push(m.nome); });
+      });
+      return f;
+    }
+
+    /* ---------- 4. caminhada pela cadeia ---------- */
+    function andaCadeia() {
+      var lista = suspeitosDaArea();
+      var fora = foraDaArea();
+
+      if (!lista.length) {
+        var meta = AREAS[st.area] || { rotulo: st.area };
+        bolha('<span class="msg-corpo"><b>Nesta configuração não existe essa etapa.</b> ' +
+          'Não há o que investigar em ' + meta.rotulo.toLowerCase() + ' aqui' +
+          (fora.length ? ' — e o que apareceria (' + fora.join(', ') + ') está fora do formato' : '') +
+          '. Se o sintoma é real, ele está em outra área.</span>', 'msg-bot msg-beco');
+        ofereceOutraArea();
+        return;
+      }
+
+      if (st.i === 0 && fora.length) {
+        bolha('<span class="msg-corpo">Antes: nesta área <b>não investigue</b> ' + fora.join(', ') +
+          ' — não entra nesta configuração.</span>', 'msg-bot msg-nota');
+      }
+
+      if (st.i >= lista.length) { fimDaCadeia(); return; }
+
+      var passo = lista[st.i];
+      bolha('<span class="msg-corpo"><span class="passo-de">Ponto ' + (st.i + 1) + ' de ' + lista.length +
+        ' · ' + passo.etapa + '</span><b>' + passo.mod.nome + '</b>' +
+        (passo.mod.papel ? '<span class="passo-papel">' + passo.mod.papel + '</span>' : '') +
+        '<span class="passo-q">Este ponto está respondendo?</span></span>');
+
+      opcoes([
+        {
+          rotulo: 'Está OK', tom: 'sim', eco: passo.mod.nome + ': OK',
+          acao: function () {
+            st.caminho.push({ nome: passo.mod.nome, r: 'ok' });
+            st.i++;
+            andaCadeia();
+          },
+        },
+        {
+          rotulo: 'O problema é aqui', tom: 'nao', eco: 'O problema é no ' + passo.mod.nome,
+          acao: function () {
+            st.caminho.push({ nome: passo.mod.nome, r: 'falhou' });
+            achou(passo);
+          },
+        },
+        {
+          rotulo: 'Não sei verificar', tom: 'neutro', eco: 'Não sei verificar',
+          acao: function () {
+            st.caminho.push({ nome: passo.mod.nome, r: 'nao verificado' });
+            var c = achaCfg();
+            bolha('<span class="msg-corpo">O documento diz sobre ele: <b>' +
+              (passo.mod.papel || 'nada além do nome') + '</b>. ' +
+              'O descritivo do formato tem o contexto completo — está no fim da página do formato. Sigo para o próximo ponto.</span>',
+              'msg-bot msg-nota');
+            st.i++;
+            andaCadeia();
+          },
+        },
+      ]);
+    }
+
+    /* ---------- 5. achou o ponto ---------- */
+    function achou(passo) {
+      var c = achaCfg();
+      var resolvidos = BOT.resolvidos[st.fmt] || [];
+      // cruza pela chave que o proprio caso declara: nada de adivinhar por
+      // semelhanca de nome, que faria o guia afirmar errado
+      var minhas = passo.mod.k || [];
+      var caso = resolvidos.filter(function (r) {
+        return (r.chaves || []).some(function (k) { return minhas.indexOf(k) >= 0; });
+      })[0];
+
+      var html = '<span class="msg-corpo"><span class="passo-de">Ponto provável</span><b>' +
+        passo.mod.nome + '</b>' +
+        (passo.mod.papel ? '<span class="passo-papel">' + passo.mod.papel + '</span>' : '') +
+        '<span class="achou-nota">O manual chega até aqui: ele descreve o que este ponto faz, ' +
+        'mas <b>não traz procedimento de conserto</b> — isso não está nos documentos do time.</span></span>';
+      bolha(html, 'msg-bot msg-achou');
+
+      if (caso) {
+        bolha('<span class="msg-corpo"><b>Existe um caso encerrado sobre este ponto:</b> ' + caso.titulo +
+          '. Resolveu: ' + caso.solucao + '</span>', 'msg-bot msg-nota');
+      }
+
+      fim();
+    }
+
+    /* ---------- 6. cadeia inteira OK ---------- */
+    function fimDaCadeia() {
+      bolha('<span class="msg-corpo"><b>Todos os pontos desta área respondem.</b> ' +
+        'Então o sintoma não está nesta parte da cadeia. Vale checar outra área — ou levar o caso para a IA, ' +
+        'já com o caminho que você percorreu.</span>', 'msg-bot msg-beco');
+      ofereceOutraArea();
+    }
+
+    function ofereceOutraArea() {
+      opcoes([
+        { rotulo: 'Checar outra área', tom: 'neutro', eco: 'Checar outra área',
+          acao: function () { st.i = 0; st.caminho = []; perguntaArea(); } },
+        { rotulo: 'Levar para a IA', tom: 'sim', eco: 'Levar para a IA',
+          acao: function () { paraIA(); } },
+      ]);
+    }
+
+    /* ---------- saídas ---------- */
+    function mostraResolvido(ref) {
+      var r = (BOT.resolvidos[st.fmt] || [])[ref || 0];
+      if (!r) { andaCadeia(); return; }
+      bolha('<span class="msg-corpo"><span class="passo-de">Caso já encerrado</span><b>' + r.titulo + '</b>' +
+        '<span class="passo-papel"><b>Era:</b> ' + r.causa + '</span>' +
+        '<span class="passo-papel"><b>Resolveu:</b> ' + r.solucao + '</span>' +
+        '<span class="achou-nota">' + r.estado + '</span></span>', 'msg-bot msg-achou');
+      st.caminho.push({ nome: r.titulo, r: 'caso encerrado, confere com o sintoma' });
+      fim();
+    }
+
+    function mostraGatilhos() {
+      var g = BOT.gatilhos[st.fmt];
+      if (!g) { andaCadeia(); return; }
+      bolha('<span class="msg-corpo"><span class="passo-de">' + g.titulo + '</span>' +
+        g.intro + '<ul class="msg-ul"><li>' + g.itens.join('</li><li>') + '</li></ul>' +
+        '<span class="achou-nota">' + g.nota + '</span></span>', 'msg-bot msg-achou');
+      bolha('<span class="msg-corpo">Se nenhum desses três bate com o que está acontecendo, o problema é outro — vamos percorrer a cadeia.</span>', 'msg-bot msg-nota');
+      opcoes([
+        { rotulo: 'Bate com um deles', tom: 'sim', eco: 'Bate com um deles',
+          acao: function () {
+            st.caminho.push({ nome: 'gatilho de contingência', r: 'confere' });
+            bolha('<span class="msg-corpo">Então o caminho documentado é <b>cair para Somente Zoom</b>: ' +
+              'o aluno passa a receber o embed do Zoom direto na plataforma, sem vMix e sem Vimeo.</span>', 'msg-bot msg-achou');
+            fim();
+          } },
+        { rotulo: 'Não bate', tom: 'nao', eco: 'Não bate',
+          acao: function () { andaCadeia(); } },
+      ]);
+    }
+
+    function textoCaminho() {
+      var c = achaCfg();
+      var meta = AREAS[st.area] || { rotulo: st.area };
+      var l = ['Percorri o guia do manual:'];
+      l.push('- Configuração: ' + c.cfg.nome);
+      l.push('- Área: ' + meta.rotulo);
+      st.caminho.forEach(function (x) { l.push('- ' + x.nome + ': ' + x.r); });
+      return l.join('\n');
+    }
+
+    function fim() {
+      var c = achaCfg();
+      opcoes([
+        { rotulo: 'Abrir o manual do formato', tom: 'neutro', eco: 'Abrir o manual do formato',
+          acao: function () { window.location.href = './' + c.cfg.ancora; } },
+        { rotulo: 'Levar para a IA com este caminho', tom: 'sim', eco: 'Levar para a IA',
+          acao: function () { paraIA(); } },
+        { rotulo: 'Começar de novo', tom: 'neutro', eco: 'Começar de novo', acao: zera },
+      ]);
+    }
+
+    // entrega o caminho na URL: sobrevive a qualquer navegação e dá para
+    // colar num chamado, diferente de sessionStorage
+    function paraIA() {
+      var c = achaCfg();
+      var meta = AREAS[st.area] || { rotulo: st.area };
+      var q = 'cfg=' + encodeURIComponent(c.cfg.nome) +
+              '&area=' + encodeURIComponent(meta.rotulo) +
+              '&trilha=' + encodeURIComponent(textoCaminho());
+      window.location.href = './' + c.formato.slug + '/?' + q + '#ia';
+    }
+
+    if (btnReset) btnReset.addEventListener('click', zera);
+    zera();
   }
 
   /* ================================================================ *
@@ -280,6 +507,31 @@
       el.addEventListener('input', atualiza);
       el.addEventListener('change', atualiza);
     });
+
+    // o guia da home manda o caminho percorrido na querystring
+    (function preencheDoGuia() {
+      if (!location.search) return;
+      var q = {};
+      location.search.replace(/^\?/, '').split('&').forEach(function (par) {
+        var i = par.indexOf('=');
+        if (i < 0) return;
+        try { q[par.slice(0, i)] = decodeURIComponent(par.slice(i + 1).replace(/\+/g, ' ')); } catch (e) {}
+      });
+      if (!q.cfg && !q.trilha) return;
+
+      if (q.cfg && selCfg) {
+        [].forEach.call(selCfg.options, function (o) { if (o.value === q.cfg) selCfg.value = q.cfg; });
+      }
+      if (q.trilha && txtTentou && !txtTentou.value.trim()) txtTentou.value = q.trilha;
+
+      var av = document.createElement('p');
+      av.className = 'guia-veio';
+      av.innerHTML = 'Veio do guia: <b>' + (q.area || '?') + '</b> em <b>' + (q.cfg || '?') +
+        '</b>, e o caminho percorrido já está em “o que já tentou”. Falta descrever o sintoma.';
+      var corpo = triagem.querySelector('.triagem-body');
+      if (corpo) corpo.parentNode.insertBefore(av, corpo);
+    })();
+
     atualiza();
 
     if (btnPacote) {

@@ -269,6 +269,9 @@ const RESOLVIDOS = {
     solucao: 'Conversor/isolador de sinal instalado entre a Scarlett e a ATEM. Além da diferença de sinal, ele reduz estática e interferência eletrônica.',
     estado: 'Encerrado. Não reabrir a menos que o ruído volte em condições diferentes das anteriores.',
     fonte: 'descritivo, seção 9',
+    // a que pontos da cadeia este caso se refere — explicito, para o guia
+    // nao ter de adivinhar por semelhanca de nome
+    chaves: ['yamaha', 'scarlett', 'isolador', 'atem', 'atem-ssd'],
   }],
   aovivo: [],
   gravadas: [],
@@ -301,6 +304,30 @@ const NAO_PROCURE = {
     'A fonte principal de gravação troca de lugar: ATEM no estúdio, vMix no remoto.',
   ],
 };
+
+/* ==================================================================== *
+ * 4b. Atalhos do guia — perguntas que os documentos sustentam.
+ *     Cada um aponta para conteudo real, nao para palpite.
+ * ==================================================================== */
+const ATALHOS = [
+  {
+    // descritivo do evento, secao 9
+    fmt: 'evento-presencial-sede',
+    area: 'audio',
+    pergunta: 'O som está com ruído, chiado ou estática?',
+    simTipo: 'resolvido',
+    simRef: 0,
+    naoNota: 'Então não é o caso já encerrado. Vamos percorrer a cadeia de áudio.',
+  },
+  {
+    // descritivo das aulas ao vivo, secao 4
+    fmt: 'aulas-ao-vivo',
+    area: 'transmissao',
+    pergunta: 'A transmissão caiu, travou ou não subiu?',
+    simTipo: 'gatilhos',
+    naoNota: 'Então vamos percorrer a cadeia de transmissão ponto a ponto.',
+  },
+];
 
 /* ==================================================================== *
  * 5. Formatos
@@ -417,6 +444,13 @@ function suspeitosHTML(cadeia, idCfg) {
 /* ==================================================================== *
  * 8. Dados para a triagem rapida da home
  * ==================================================================== */
+const BOT = {
+  atalhos: ATALHOS,
+  resolvidos: Object.fromEntries(FORMATOS.map((f) => [f.slug, RESOLVIDOS[f.cadeias] || []])),
+  gatilhos: Object.fromEntries(FORMATOS.map((f) => [f.slug, GATILHOS[f.cadeias] || null])),
+  naoProcure: Object.fromEntries(FORMATOS.map((f) => [f.slug, NAO_PROCURE[f.cadeias] || []])),
+};
+
 const MANUAL = FORMATOS.map((f) => ({
   slug: f.slug,
   nav: f.nav,
@@ -426,7 +460,9 @@ const MANUAL = FORMATOS.map((f) => ({
     ancora: `${f.slug}/#cfg-${i}`,
     etapas: c.estagios.map(([rotulo, area, mods]) => ({
       rotulo, area,
-      mods: mods.map(([nome, papel, estado]) => ({ nome, papel, estado })),
+      mods: mods.map(([nome, papel, estado, chaves]) => ({
+        nome, papel, estado, k: String(chaves || '').split(/\s+/).filter(Boolean),
+      })),
     })),
   })),
   resolvidos: (RESOLVIDOS[f.cadeias] || []).length,
@@ -530,7 +566,7 @@ ${corpo}
 <div id="toast" role="status" aria-live="polite"><span class="ok">${IC.check}</span><span class="msg"></span></div>
 <button id="aoTopo" type="button" aria-label="Voltar ao topo">${IC.topo}</button>
 
-<script>window.AV_INDICE=${indiceJson};${manualJson ? `window.AV_MANUAL=${manualJson};window.AV_AREAS=${JSON.stringify(AREAS)};` : ''}</script>
+<script>window.AV_INDICE=${indiceJson};${manualJson ? `window.AV_MANUAL=${manualJson};window.AV_AREAS=${JSON.stringify(AREAS)};window.AV_BOT=${JSON.stringify(BOT)};` : ''}</script>
 <script src="${base}assets/site.js"></script>
 `;
 }
@@ -604,34 +640,26 @@ function home() {
     <div class="wrap">
       <span class="eyebrow">Manual de suporte · audiovisual</span>
       <h1>Deu problema<br><span class="dim">na aula?</span></h1>
-      <p class="lead">Diga em que configuração você está e onde está o problema. O manual devolve <b>quem está na cadeia, na ordem do sinal</b> — e, o que economiza mais tempo, <b>o que não está em jogo</b> naquele formato.</p>
+      <p class="lead">Responda duas ou três perguntas e o guia leva até o ponto provável, percorrendo a cadeia <b>um equipamento por vez</b>. Ele também diz <b>o que não está em jogo</b> naquele formato — que é o que mais economiza tempo.</p>
     </div>
   </div>
 
-  <section id="triagem-rapida">
+  <section id="guia">
     <div class="wrap">
-      <div class="tri">
-        <div class="tri-passo">
-          <div class="tri-num">1</div>
-          <div class="tri-corpo">
-            <h2>Em que configuração você está?</h2>
-            <p class="tri-ajuda">Se não souber, abra o formato lá embaixo — a diferença entre elas está descrita.</p>
-            <div class="opt-lista" id="optCfg">
-${opcoesCfg}
-            </div>
+      <div class="bot" id="bot">
+        <div class="bot-cab">
+          <span class="bot-av" aria-hidden="true"></span>
+          <div class="bot-quem">
+            <b>Guia de diagnóstico</b>
+            <small>Sem IA. Só o que está nos documentos do time.</small>
           </div>
+          <button class="bot-reset" type="button" id="botReset" hidden>Começar de novo</button>
         </div>
-
-        <div class="tri-passo" id="passo2" hidden>
-          <div class="tri-num">2</div>
-          <div class="tri-corpo">
-            <h2>Onde está o problema?</h2>
-            <div class="opt-linha" id="optArea"></div>
-          </div>
-        </div>
-
-        <div class="tri-saida" id="triSaida" hidden></div>
+        <div class="bot-fluxo" id="botFluxo" aria-live="polite"></div>
       </div>
+      <noscript>
+        <p class="sec-sub" style="margin-top:16px">O guia precisa de JavaScript. Sem ele, abra o formato direto na lista abaixo — a cadeia completa está lá.</p>
+      </noscript>
     </div>
   </section>
 
