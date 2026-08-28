@@ -182,9 +182,29 @@
       return telaPonto(lista);
     }
 
+    // no modo tela as acoes saem do cartao e vao para o rodape fixo, na
+    // zona do polegar: o cartao rola, os botoes ficam sempre alcancaveis
+    var modoTela = window.AV_MODO === 'tela';
+    var barraAcoes = document.getElementById('guiaAcoes');
+
     function troca(html) {
       palco.innerHTML = html;
-      palco.querySelectorAll('[data-vai]').forEach(function (b) {
+      if (modoTela && barraAcoes) {
+        barraAcoes.innerHTML = '';
+        // move o grupo inteiro quando houver: mover so' as .escolhas deixaria
+        // os rotulos ("EVENTO PRESENCIAL"...) orfaos la' em cima
+        palco.querySelectorAll('.grupos, .escolhas, .cartao-pe').forEach(function (bloco) {
+          var dentroDeGrupo = bloco.closest('.grupos');
+          if (dentroDeGrupo && !bloco.classList.contains('grupos')) return;
+          barraAcoes.appendChild(bloco);
+        });
+        barraAcoes.hidden = barraAcoes.children.length === 0;
+        palco.scrollTop = 0;
+      }
+      var raiz = modoTela && barraAcoes ? document : palco;
+      raiz.querySelectorAll('[data-vai]').forEach(function (b) {
+        if (b.dataset.ligado === '1') return;
+        b.dataset.ligado = '1';
         b.addEventListener('click', function () {
           var fn = acoes[b.getAttribute('data-vai')];
           if (fn) fn(b);

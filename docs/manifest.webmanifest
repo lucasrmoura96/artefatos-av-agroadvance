@@ -1,0 +1,19 @@
+{
+  "name": "Guia de diagnóstico · AV Agroadvance",
+  "short_name": "Guia AV",
+  "description": "Três perguntas até o ponto provável, com os passos de solução.",
+  "start_url": "./guia/",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#F4F6F9",
+  "theme_color": "#142C46",
+  "icons": [
+    {
+      "src": "./favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

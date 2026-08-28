@@ -633,6 +633,55 @@ ${atual === null ? '' : `
 
 const indicePara = (base) => JSON.stringify(INDICE.map((i) => ({ ...i, h: i.h.replace('{B}', base) })));
 
+
+/* ==================================================================== *
+ * 10b. Tela do guia — casca minima, so' o chatbot. Feita para o celular
+ *      no meio de um evento: nada de topbar, rodape ou busca.
+ * ==================================================================== */
+function paginaTela({ base, indiceJson }) {
+  return `<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Guia de diagnóstico · AV Agroadvance</title>
+<meta name="description" content="Guia de diagnóstico de audiovisual da Agroadvance: três perguntas até o ponto provável.">
+<meta name="robots" content="noindex,nofollow">
+<meta name="theme-color" content="#142C46">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Guia AV">
+<link rel="manifest" href="${base}manifest.webmanifest">
+<link rel="icon" href="${base}favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="${base}favicon.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Familjen+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400;500&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="${base}assets/site.css?v=${V_CSS}">
+<script>(function(){try{var t=localStorage.getItem('av-tema');if(!t)t=matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';document.documentElement.setAttribute('data-theme',t)}catch(e){}})();</script>
+
+<div class="tela">
+  <header class="tela-cab">
+    <a class="tela-marca" href="${base}" aria-label="Sair do guia e abrir o manual">
+      <span class="mark" aria-hidden="true"><span></span></span>
+    </a>
+    <div class="guia-trilha" id="guiaTrilha" aria-live="polite"></div>
+    <button class="tela-voltar" id="guiaVoltar" type="button" hidden>Voltar</button>
+    <button class="iconbtn" id="btnTema" type="button" aria-label="Alternar tema">${IC.sol}${IC.lua}</button>
+  </header>
+
+  <main class="tela-corpo" id="guiaPalco"></main>
+
+  <footer class="tela-acoes" id="guiaAcoes"></footer>
+
+  <noscript><p style="padding:24px">O guia precisa de JavaScript. Abra o <a href="${base}">manual completo</a>.</p></noscript>
+</div>
+
+<div id="toast" role="status" aria-live="polite"><span class="ok">${IC.check}</span><span class="msg"></span></div>
+
+<script>window.AV_MODO="tela";window.AV_BASE=${JSON.stringify(base)};window.AV_INDICE=${indiceJson};window.AV_MANUAL=${JSON.stringify(MANUAL)};window.AV_AREAS=${JSON.stringify(AREAS)};window.AV_BOT=${JSON.stringify(BOT)};window.AV_SOLUCOES=${JSON.stringify(SOLUCOES)};window.AV_ORIGENS=${JSON.stringify(ORIGENS)};</script>
+<script src="${base}assets/site.js?v=${V_JS}"></script>
+`;
+}
+
 /* ==================================================================== *
  * 11. Home — a triagem rapida
  * ==================================================================== */
@@ -652,6 +701,10 @@ function home() {
       <div class="guia-palco" id="guiaPalco"></div>
       <noscript><p class="cartao-ajuda" style="padding:22px">O guia precisa de JavaScript. Sem ele, abra o manual de um formato nos links abaixo.</p></noscript>
     </div>
+
+    <p class="palco-pe palco-pe-tela">
+      <a class="link-tela" href="./guia/">Abrir o guia em tela cheia &mdash; melhor no celular</a>
+    </p>
 
     <p class="palco-pe">
       Manual completo:
@@ -981,4 +1034,20 @@ writeFileSync(join(OUT, 'equipamentos', 'index.html'), pagina({
   indiceJson: indicePara('../'),
 }));
 
-console.log(`ok — ${FORMATOS.length + 2} páginas, ${INDICE.length} itens na busca, ${Object.keys(SOLUCOES).length} equipamentos`);
+mkdirSync(join(OUT, 'guia'), { recursive: true });
+writeFileSync(join(OUT, 'guia', 'index.html'), paginaTela({ base: '../', indiceJson: indicePara('../') }));
+
+writeFileSync(join(OUT, 'manifest.webmanifest'), JSON.stringify({
+  name: 'Guia de diagnóstico · AV Agroadvance',
+  short_name: 'Guia AV',
+  description: 'Três perguntas até o ponto provável, com os passos de solução.',
+  start_url: './guia/',
+  scope: './',
+  display: 'standalone',
+  orientation: 'portrait',
+  background_color: '#F4F6F9',
+  theme_color: '#142C46',
+  icons: [{ src: './favicon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any' }],
+}, null, 2));
+
+console.log(`ok — ${FORMATOS.length + 3} páginas, ${INDICE.length} itens na busca, ${Object.keys(SOLUCOES).length} equipamentos`);
