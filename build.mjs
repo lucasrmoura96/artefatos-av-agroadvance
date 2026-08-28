@@ -1,4 +1,4 @@
-// Gera o site a partir dos .md em /conteudo. Node puro, sem dependencias.
+// Gera o manual a partir dos .md em /conteudo. Node puro, sem dependencias.
 // Uso: node build.mjs
 import { readFileSync, writeFileSync, mkdirSync, copyFileSync, rmSync } from 'node:fs';
 import { join, dirname } from 'node:path';
@@ -25,9 +25,8 @@ function inline(s) {
     .replace(/ -&gt; /g, ' &rarr; ');
 }
 
-// Titulos descem um nivel: # -> h2, ## -> h3. semTitulo descarta o # de topo,
-// porque o h1 da pagina ja diz o nome do formato. As secoes (##) recebem id
-// para a busca poder apontar direto. Devolve { html, secoes }.
+// Titulos descem um nivel (# -> h2). As secoes (##) recebem id para a busca
+// apontar direto. Devolve { html, secoes }.
 function md2html(src, { semTitulo = false, prefixoId = '' } = {}) {
   const linhas = String(src).replace(/\r\n/g, '\n').split('\n');
   const out = [];
@@ -38,12 +37,10 @@ function md2html(src, { semTitulo = false, prefixoId = '' } = {}) {
     linhas[n] != null && linhas[n].trim().startsWith('|') &&
     linhas[n + 1] != null && /^\|[\s|:-]+\|$/.test(linhas[n + 1].trim());
 
-  const celulas = (linha) =>
-    linha.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map((c) => c.trim());
+  const celulas = (l) => l.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map((c) => c.trim());
 
   while (i < linhas.length) {
     const t = linhas[i].trim();
-
     if (t === '') { i++; continue; }
     if (/^(-{3,}|\*{3,})$/.test(t)) { out.push('<hr>'); i++; continue; }
 
@@ -113,42 +110,58 @@ function md2html(src, { semTitulo = false, prefixoId = '' } = {}) {
 }
 
 /* ==================================================================== *
- * 2. Cadeias de sinal
- *    Cada modulo: [nome, papel, estado, chaves]
+ * 2. Areas de problema — como a pessoa descreve o sintoma
+ * ==================================================================== */
+const AREAS = {
+  audio:       { rotulo: 'Áudio',            desc: 'som da voz, microfone, chiado, volume' },
+  imagem:      { rotulo: 'Imagem',           desc: 'câmera, enquadramento, corte, imagem travada' },
+  slides:      { rotulo: 'Slides',           desc: 'apresentação, telão, compartilhamento de tela' },
+  gravacao:    { rotulo: 'Gravação',         desc: 'o arquivo do evento, backup, SSD' },
+  transmissao: { rotulo: 'Transmissão',      desc: 'a live caiu, travou, não subiu' },
+  aluno:       { rotulo: 'Acesso do aluno',  desc: 'aluno não vê, não entra, player travado' },
+  sala:        { rotulo: 'Som e telão da sala', desc: 'quem está presente não ouve ou não vê' },
+};
+
+/* ==================================================================== *
+ * 3. Cadeias — [rotulo do estagio, area, modulos]
+ *    modulo: [nome, papel, estado, chaves]
  *    estado: on = em uso | bkp = backup/eventual | live = ao vivo | off = fora
- *    chaves: rotulos separados por espaco, usados pelo comparador
- *    Tudo aqui sai dos descritivos em /conteudo. Nao inventar.
+ *    Tudo sai dos descritivos em /conteudo. Nao inventar.
  * ==================================================================== */
 const CADEIAS = {
   evento: [{
     nome: 'Configuração única',
     nota: 'Montagem e operação: 1 pessoa',
     estagios: [
-      ['Captação de voz', [
+      ['Captação de voz', 'audio', [
         ['4x mic s/fio Dylan', '2 lapela Pertinence + 2 bastão', 'on', 'mic-dylan'],
         ['XLR P2 do notebook', 'ocupa 1 canal quando o slide tem áudio', 'bkp', 'xlr-p2'],
       ]],
-      ['Roteamento de áudio', [
+      ['Roteamento de áudio', 'audio', [
         ['Yamaha MG10XU', '4 entradas XLR', 'on', 'yamaha'],
         ['Scarlett 16i16', 'ganho e volume', 'on', 'scarlett'],
-        ['Isolador de sinal', 'resolveu o ruído — ver histórico', 'on', 'isolador'],
+        ['Isolador de sinal', 'entre a Scarlett e a ATEM', 'on', 'isolador'],
       ]],
-      ['Imagem e slides', [
+      ['Câmeras', 'imagem', [
         ['PTZ 4K + controladora', 'só o professor, com presets', 'on', 'ptz'],
         ['Sony A7 III', 'audiência', 'on', 'sony-a7'],
-        ['Splitter HDMI', 'telão + entrada da ATEM', 'on', 'slides'],
-        ['Sony extra', 'só em exceção', 'off', 'sony-extra'],
+        ['Sony extra', 'só em exceção; ocupa uma das 4 entradas livres da ATEM', 'bkp', 'sony-extra'],
       ]],
-      ['Corte', [
+      ['Slides', 'slides', [
+        ['Splitter HDMI', 'uma saída no telão, outra na ATEM', 'on', 'slides'],
+        ['Notebook do operador', 'configuração A: professor não mexe no computador', 'on', 'nb-operador'],
+        ['Notebook do professor', 'configuração B: segunda mesa no meio do auditório', 'bkp', 'nb-professor'],
+      ]],
+      ['Corte', 'imagem', [
         ['ATEM Extreme ISO', '4 das 8 entradas em uso', 'on', 'atem'],
       ]],
-      ['Registro', [
+      ['Registro', 'gravacao', [
         ['ATEM', 'captura principal', 'on', 'atem-ssd'],
         ['vMix', 'gravação backup', 'bkp', 'vmix'],
         ['Vimeo live', '2º backup', 'bkp', 'vimeo'],
       ]],
-      ['Sala', [
-        ['Telão LED 2 x 1,5 m', '', 'on', 'sala'],
+      ['Sala', 'sala', [
+        ['Telão LED 2 x 1,5 m', 'na frente do auditório', 'on', 'sala'],
         ['PA — 2 zonas', 'frontal e traseira, volumes independentes', 'on', 'sala'],
       ]],
     ],
@@ -159,45 +172,45 @@ const CADEIAS = {
       nome: 'Presencial em estúdio',
       nota: 'Padrão quando o professor está no estúdio',
       estagios: [
-        ['Captação', [
-          ['2x Sony A7 III', 'host e professor', 'on', 'sony-a7'],
-          ['Notebook slides (HDMI)', '', 'on', 'slides'],
-        ]],
-        ['Áudio', [['2x lapela s/fio Sony', 'modelo a confirmar', 'on', 'lapela-sony']]],
-        ['Corte', [['ATEM', 'grava SSD via USB-C · retorno na TV do estúdio', 'on', 'atem atem-ssd']]],
-        ['Encode', [
+        ['Câmeras', 'imagem', [['2x Sony A7 III', 'uma no host, uma no professor', 'on', 'sony-a7']]],
+        ['Áudio', 'audio', [['2x lapela s/fio Sony', 'modelo a confirmar', 'on', 'lapela-sony']]],
+        ['Slides', 'slides', [['Notebook por HDMI', 'a ATEM devolve o retorno na TV do estúdio', 'on', 'slides']]],
+        ['Corte', 'imagem', [['ATEM', 'grava SSD via USB-C', 'on', 'atem atem-ssd']]],
+        ['Encode', 'transmissao', [
           ['vMix', 'recebe da ATEM via USB', 'on', 'vmix'],
-          ['Gravação backup', '', 'bkp', 'vmix-rec'],
+          ['Gravação backup', 'no vMix, além do SSD da ATEM', 'bkp', 'vmix-rec'],
         ]],
-        ['Distribuição', [['Vimeo', 'transmissão ao vivo', 'live', 'vimeo']]],
-        ['Entrega', [['Plataforma LW', 'player recebendo o Vimeo', 'on', 'lw']]],
+        ['Transmissão', 'transmissao', [['Vimeo', 'live', 'live', 'vimeo']]],
+        ['Acesso do aluno', 'aluno', [['Plataforma LW', 'player recebendo o Vimeo', 'on', 'lw']]],
       ],
     },
     {
       nome: 'Híbrido (Zoom + vMix)',
       nota: 'Padrão para aula remota convencional',
       estagios: [
-        ['Captação', [['Câmeras via Zoom', 'professor, host e AV na sala', 'on', 'zoom-cam']]],
-        ['Áudio', [['Áudio nativo do Zoom', '', 'on', 'zoom-audio']]],
-        ['Corte', [['ATEM', 'não usada — logo não há gravação SSD', 'off', 'atem atem-ssd']]],
-        ['Encode', [
+        ['Câmeras', 'imagem', [['Câmeras via Zoom', 'professor, host e AV na sala', 'on', 'zoom-cam']]],
+        ['Áudio', 'audio', [['Áudio nativo do Zoom', 'sem mesa, sem lapela', 'on', 'zoom-audio']]],
+        ['Slides', 'slides', [['Compartilhados no Zoom', 'o mockup do vMix combina slide e professor', 'on', 'slides']]],
+        ['Corte', 'imagem', [['ATEM', 'não entra neste formato', 'off', 'atem atem-ssd']]],
+        ['Encode', 'transmissao', [
           ['vMix + plugin Zoom', 'mockup visual da Agroadvance', 'on', 'vmix'],
-          ['Gravação backup', '', 'bkp', 'vmix-rec'],
+          ['Gravação backup', 'no vMix', 'bkp', 'vmix-rec'],
         ]],
-        ['Distribuição', [['Vimeo', 'transmissão ao vivo', 'live', 'vimeo']]],
-        ['Entrega', [['Plataforma LW', 'player recebendo o Vimeo', 'on', 'lw']]],
+        ['Transmissão', 'transmissao', [['Vimeo', 'live', 'live', 'vimeo']]],
+        ['Acesso do aluno', 'aluno', [['Plataforma LW', 'player recebendo o Vimeo', 'on', 'lw']]],
       ],
     },
     {
       nome: 'Somente Zoom',
       nota: 'Contingência do híbrido, ou aula de cases',
       estagios: [
-        ['Captação', [['Câmeras nativas do Zoom', '', 'on', 'zoom-cam']]],
-        ['Áudio', [['Áudio nativo do Zoom', '', 'on', 'zoom-audio']]],
-        ['Corte', [['ATEM', 'fora deste formato', 'off', 'atem atem-ssd']]],
-        ['Encode', [['vMix', 'fora deste formato', 'off', 'vmix']]],
-        ['Distribuição', [['Vimeo', 'gatilho típico: limite de lives simultâneas', 'off', 'vimeo']]],
-        ['Entrega', [['Embed do Zoom na LW', 'sem vMix e sem Vimeo', 'on', 'lw zoom-embed']]],
+        ['Câmeras', 'imagem', [['Câmeras nativas do Zoom', '', 'on', 'zoom-cam']]],
+        ['Áudio', 'audio', [['Áudio nativo do Zoom', '', 'on', 'zoom-audio']]],
+        ['Slides', 'slides', [['Compartilhados no Zoom', '', 'on', 'slides']]],
+        ['Corte', 'imagem', [['ATEM', 'não entra neste formato', 'off', 'atem atem-ssd']]],
+        ['Encode', 'transmissao', [['vMix', 'não entra neste formato', 'off', 'vmix']]],
+        ['Transmissão', 'transmissao', [['Vimeo', 'não entra neste formato', 'off', 'vimeo']]],
+        ['Acesso do aluno', 'aluno', [['Embed do Zoom na LW', 'direto, sem vMix e sem Vimeo', 'on', 'lw zoom-embed']]],
       ],
     },
   ],
@@ -207,41 +220,90 @@ const CADEIAS = {
       nome: 'Presencial em estúdio (gravado)',
       nota: 'Mesma estrutura do estúdio ao vivo, sem transmissão',
       estagios: [
-        ['Captação', [
-          ['2x Sony A7 III', 'host e professor', 'on', 'sony-a7'],
-          ['Notebook slides (HDMI)', '', 'on', 'slides'],
-        ]],
-        ['Áudio', [['2x lapela s/fio Sony', 'modelo a confirmar', 'on', 'lapela-sony']]],
-        ['Corte', [['ATEM', 'retorno na TV do estúdio', 'on', 'atem']]],
-        ['Registro', [
+        ['Câmeras', 'imagem', [['2x Sony A7 III', 'uma no host, uma no professor', 'on', 'sony-a7']]],
+        ['Áudio', 'audio', [['2x lapela s/fio Sony', 'modelo a confirmar', 'on', 'lapela-sony']]],
+        ['Slides', 'slides', [['Notebook por HDMI', 'retorno na TV do estúdio', 'on', 'slides']]],
+        ['Corte', 'imagem', [['ATEM', '', 'on', 'atem']]],
+        ['Registro', 'gravacao', [
           ['ATEM — SSD via USB-C', 'fonte principal', 'on', 'atem-ssd'],
           ['vMix', 'gravação backup', 'bkp', 'vmix'],
           ['Vimeo', 'não existe em aula gravada', 'off', 'vimeo'],
         ]],
-        ['Pós', [['Edição', '', 'on', 'edicao']]],
-        ['Entrega', [['Upload na plataforma', '', 'on', 'lw']]],
+        ['Entrega', 'aluno', [
+          ['Edição', 'antes de publicar', 'on', 'edicao'],
+          ['Upload na plataforma', '', 'on', 'lw'],
+        ]],
       ],
     },
     {
       nome: 'Remoto (gravado)',
       nota: 'Professor e AV na sala do Zoom, sem alunos',
       estagios: [
-        ['Captação', [['Câmeras via Zoom', 'professor e AV', 'on', 'zoom-cam']]],
-        ['Áudio', [['Áudio nativo do Zoom', '', 'on', 'zoom-audio']]],
-        ['Corte', [['ATEM', 'fora deste formato', 'off', 'atem atem-ssd']]],
-        ['Registro', [
+        ['Câmeras', 'imagem', [['Câmeras via Zoom', 'professor e AV', 'on', 'zoom-cam']]],
+        ['Áudio', 'audio', [['Áudio nativo do Zoom', '', 'on', 'zoom-audio']]],
+        ['Slides', 'slides', [['Compartilhados no Zoom', 'inputs organizados no vMix', 'on', 'slides']]],
+        ['Corte', 'imagem', [['ATEM', 'não entra neste formato', 'off', 'atem atem-ssd']]],
+        ['Registro', 'gravacao', [
           ['vMix', 'gravação principal, inputs no padrão visual', 'on', 'vmix'],
           ['Vimeo', 'não existe em aula gravada', 'off', 'vimeo'],
         ]],
-        ['Pós', [['Edição', 'facilitada pela programação de inputs', 'on', 'edicao']]],
-        ['Entrega', [['Upload na plataforma', 'material já editado', 'on', 'lw']]],
+        ['Entrega', 'aluno', [
+          ['Edição', 'facilitada pela programação de inputs', 'on', 'edicao'],
+          ['Upload na plataforma', 'material já editado', 'on', 'lw'],
+        ]],
       ],
     },
   ],
 };
 
 /* ==================================================================== *
- * 3. Formatos
+ * 4. Conteudo de manual que os documentos REALMENTE trazem.
+ *    Nada aqui e' invencao: cada item aponta para a fonte.
+ * ==================================================================== */
+
+// Casos encerrados. Reabrir so' se o sintoma mudar.
+const RESOLVIDOS = {
+  evento: [{
+    titulo: 'Ruído alto ao rotear áudio para a ATEM',
+    causa: 'Diferença de sinal e impedância ao mandar áudio direto da Yamaha ou da Scarlett para a entrada analógica P2 da ATEM.',
+    solucao: 'Conversor/isolador de sinal instalado entre a Scarlett e a ATEM. Além da diferença de sinal, ele reduz estática e interferência eletrônica.',
+    estado: 'Encerrado. Não reabrir a menos que o ruído volte em condições diferentes das anteriores.',
+    fonte: 'descritivo, seção 9',
+  }],
+  aovivo: [],
+  gravadas: [],
+};
+
+// Gatilhos documentados de troca de formato.
+const GATILHOS = {
+  aovivo: {
+    titulo: 'Quando cair para Somente Zoom',
+    intro: 'O descritivo lista três gatilhos de exceção para abandonar o híbrido. Nos três, o caminho passa a ser o embed do Zoom direto na plataforma.',
+    itens: [
+      'Internet instável — do professor, do host ou do audiovisual.',
+      'Problema no vMix.',
+      'Limite de lives simultâneas atingido no Vimeo.',
+    ],
+    nota: 'Aula de cases é caso à parte: ela já nasce em Somente Zoom, porque precisa das salas de grupo do Zoom.',
+    fonte: 'descritivo, seção 4',
+  },
+};
+
+// Fatos que evitam diagnostico perdido.
+const NAO_PROCURE = {
+  evento: [],
+  aovivo: [
+    'A ATEM só existe no presencial em estúdio. Nos dois formatos remotos ela não entra — e sem ela não há gravação em SSD.',
+    'No Somente Zoom não passa nem vMix nem Vimeo: o aluno recebe o embed do Zoom direto na plataforma.',
+  ],
+  gravadas: [
+    'Vimeo não entra em aula gravada, em nenhum dos dois formatos. Ele é exclusivo do fluxo ao vivo.',
+    'A fonte principal de gravação troca de lugar: ATEM no estúdio, vMix no remoto.',
+  ],
+};
+
+/* ==================================================================== *
+ * 5. Formatos
  * ==================================================================== */
 const FORMATOS = [
   {
@@ -249,10 +311,8 @@ const FORMATOS = [
     num: '01',
     nav: 'Evento presencial',
     titulo: 'Evento presencial na sede',
-    h1: ['Evento presencial', 'na sede'],
     cadeias: 'evento',
-    resumo: 'Imersões e eventos no auditório da sede: 40 a 50 pessoas, telão de LED, PA em duas zonas. Áudio de quatro microfones sem fio passando por Yamaha, Scarlett e isolador antes da ATEM. Três registros do mesmo evento.',
-    destaque: 'Único formato em que a operação inteira — áudio, slides, câmeras e cortes — fica com uma só pessoa.',
+    resumo: 'Auditório da sede, 40 a 50 pessoas. Quatro microfones sem fio passando por Yamaha, Scarlett e isolador antes da ATEM. Três registros do mesmo evento, e a operação inteira com uma só pessoa.',
     pasta: '01-evento-presencial-sede',
     arquivos: { artefato: 'artefato-evento-presencial-sede.md', descritivo: 'descritivo-evento-presencial-sede.md' },
   },
@@ -261,10 +321,8 @@ const FORMATOS = [
     num: '02',
     nav: 'Aulas ao vivo',
     titulo: 'Aulas ao vivo',
-    h1: ['Aulas', 'ao vivo'],
     cadeias: 'aovivo',
-    resumo: 'Presencial em estúdio, híbrido pelo Zoom com vMix, e somente Zoom como contingência ou aula de cases. O aluno chega pela plataforma nos três, mas o caminho até ela muda por completo.',
-    destaque: 'A ATEM só existe no estúdio. Nos dois formatos remotos ela não entra — e com ela vai embora a gravação em SSD.',
+    resumo: 'Três formatos técnicos: presencial em estúdio, híbrido pelo Zoom com vMix, e somente Zoom como contingência ou aula de cases. O aluno chega pela plataforma nos três, mas o caminho até ela muda por completo.',
     pasta: '02-aulas-ao-vivo',
     arquivos: { artefato: 'artefato-aulas-ao-vivo.md', descritivo: 'descritivo-aulas-ao-vivo.md' },
   },
@@ -273,10 +331,8 @@ const FORMATOS = [
     num: '03',
     nav: 'Aulas gravadas',
     titulo: 'Aulas gravadas',
-    h1: ['Aulas', 'gravadas'],
     cadeias: 'gravadas',
-    resumo: 'Sem transmissão: grava, edita e só então sobe para a plataforma. Vimeo não entra em nenhuma das duas. Quem grava principal muda de lugar entre o estúdio (ATEM) e o remoto (vMix).',
-    destaque: 'Quem é a fonte principal de gravação troca de lugar: ATEM no estúdio, vMix no remoto.',
+    resumo: 'Sem transmissão ao vivo: grava, edita e só então sobe para a plataforma. Vimeo não entra em nenhum dos dois formatos.',
     pasta: '03-aulas-gravadas',
     arquivos: { artefato: 'artefato-aulas-gravadas.md', descritivo: 'descritivo-aulas-gravadas.md' },
   },
@@ -284,15 +340,13 @@ const FORMATOS = [
 
 const leia = (p) => readFileSync(join(CONT, p), 'utf8').replace(/\r\n/g, '\n').trim();
 const PROMPT = leia('prompt-introdutorio.md');
-// O arquivo tem um cabecalho de instrucao antes do "---"; o que vai para o
-// chat e o texto depois dele.
 const PROMPT_CHAT = PROMPT.split(/\n---\n/).slice(1).join('\n---\n').trim() || PROMPT;
 
 const bruto = (id, texto) =>
   `<script type="text/plain" id="${id}">${String(texto).replace(/<\/script/gi, '<\\/script')}</script>`;
 
 /* ==================================================================== *
- * 4. Icones (inline, sem dependencia externa)
+ * 6. Icones
  * ==================================================================== */
 const IC = {
   lupa: '<svg class="lupa" width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="7" cy="7" r="4.5" stroke="currentColor" stroke-width="1.5"/><path d="M10.5 10.5L14 14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>',
@@ -303,150 +357,83 @@ const IC = {
   topo: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 13V4M4 7.5L8 3.5l4 4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   copia: '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><rect x="5" y="5" width="7.5" height="7.5" rx="1.6" stroke="currentColor" stroke-width="1.4"/><path d="M9.4 3.2A1.6 1.6 0 007.9 2H3.1A1.6 1.6 0 001.5 3.6v4.8A1.6 1.6 0 003 10" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>',
   check: '<svg width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden="true"><path d="M2 5.4L4 7.4 8 3" stroke="#0A2E14" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>',
-  alerta: '<svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true"><path d="M9 6.2v4M9 12.4v.2" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><circle cx="9" cy="9" r="6.8" stroke="currentColor" stroke-width="1.5"/></svg>',
   doc: '<svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M9 1.8H4.6A1.6 1.6 0 003 3.4v9.2a1.6 1.6 0 001.6 1.6h6.8a1.6 1.6 0 001.6-1.6V6l-4-4.2z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M9 2v4h4" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>',
-  cubo: '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 1.6l5.6 3.2v6.4L8 14.4 2.4 11.2V4.8L8 1.6z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M2.4 4.8L8 8l5.6-3.2M8 8v6.4" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>',
-  grade: '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><rect x="2" y="2" width="5" height="5" rx="1.2" stroke="currentColor" stroke-width="1.4"/><rect x="9" y="2" width="5" height="5" rx="1.2" stroke="currentColor" stroke-width="1.4"/><rect x="2" y="9" width="5" height="5" rx="1.2" stroke="currentColor" stroke-width="1.4"/><rect x="9" y="9" width="5" height="5" rx="1.2" stroke="currentColor" stroke-width="1.4"/></svg>',
+  ok: '<svg width="16" height="16" viewBox="0 0 18 18" fill="none" aria-hidden="true"><circle cx="9" cy="9" r="7" stroke="currentColor" stroke-width="1.5"/><path d="M5.8 9.2l2.1 2.1 4.3-4.3" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  aviso: '<svg width="16" height="16" viewBox="0 0 18 18" fill="none" aria-hidden="true"><path d="M9 6.4v3.8M9 12.5v.2" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><path d="M7.6 2.6L1.4 13.4a1.6 1.6 0 001.4 2.4h12.4a1.6 1.6 0 001.4-2.4L10.4 2.6a1.6 1.6 0 00-2.8 0z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>',
+  proibido: '<svg width="16" height="16" viewBox="0 0 18 18" fill="none" aria-hidden="true"><circle cx="9" cy="9" r="7" stroke="currentColor" stroke-width="1.5"/><path d="M4.4 13.6L13.6 4.4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>',
+  raio: '<svg width="16" height="16" viewBox="0 0 18 18" fill="none" aria-hidden="true"><path d="M10 1.6L4 10h3.6l-1 6.4L13 8h-3.6l.6-6.4z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>',
 };
 
 /* ==================================================================== *
- * 5. Cadeia — render
+ * 7. Lista de suspeitos — a peca central do manual
  * ==================================================================== */
-const ATIVO = (e) => e === 'on' || e === 'bkp' || e === 'live';
-const ROTULO_ESTADO = { on: 'Em uso', bkp: 'Backup', live: 'Ao vivo', off: 'Não usa' };
+const ROTULO_ESTADO = { on: 'Em uso', bkp: 'Eventual', live: 'Ao vivo', off: 'Fora' };
 
-function railHTML(cadeia, idCadeia) {
-  const pecas = [];
+function suspeitosHTML(cadeia, idCfg) {
+  let n = 0;
+  const etapas = cadeia.estagios.map(([rotulo, area, mods]) => {
+    const ativos = mods.filter((m) => m[2] !== 'off');
+    const fora = mods.filter((m) => m[2] === 'off');
 
-  cadeia.estagios.forEach(([rotulo, mods], si) => {
-    if (si > 0) {
-      // o conector morre quando o estagio anterior nao tem nada aceso
-      const vivo = cadeia.estagios[si - 1][1].some((m) => ATIVO(m[2]));
-      pecas.push(`<div class="link${vivo ? '' : ' morto'}" aria-hidden="true">${vivo ? `<span class="pulso" style="--pd:${si}"></span>` : ''}</div>`);
-    }
-
-    const cartoes = mods.map(([nome, papel, estado, chaves]) => `
-            <button type="button" class="mod" data-s="${estado}" data-k="${esc(chaves || '')}"
-                    aria-pressed="false" title="Acender ${esc(nome)} nas outras configurações">
-              ${estado === 'live' ? '<span class="tag">AO VIVO</span>' : ''}
-              <span class="led" aria-hidden="true"></span>
-              <span class="txt">
-                <span class="nome">${esc(nome)}</span>
-                ${papel ? `<span class="papel">${esc(papel)}</span>` : ''}
+    const linhas = ativos.map(([nome, papel, estado]) => {
+      n++;
+      return `<li class="susp" data-s="${estado}">
+              <span class="ord">${n}</span>
+              <span class="susp-txt">
+                <span class="susp-nome">${esc(nome)}</span>
+                ${papel ? `<span class="susp-papel">${esc(papel)}</span>` : ''}
               </span>
-            </button>`).join('');
-
-    pecas.push(`<div class="stage">
-            <span class="stage-lbl"><span class="n">${si + 1}</span>${esc(rotulo)}</span>${cartoes}
-          </div>`);
-  });
-
-  return `<div class="chain" id="${idCadeia}">
-        <div class="chain-head">
-          <h3>${esc(cadeia.nome)}</h3>
-          <span class="nota">${esc(cadeia.nota)}</span>
-        </div>
-        <div class="scene" data-vista="plano">
-          <div class="rail">${pecas.join('')}</div>
-        </div>
-      </div>`;
-}
-
-const LEGENDA = `<div class="legenda">
-        <span class="it"><span class="dot" style="background:var(--st-on)"></span> Em uso</span>
-        <span class="it"><span class="dot" style="background:var(--st-bkp)"></span> Backup ou eventual</span>
-        <span class="it"><span class="dot" style="background:var(--st-live)"></span> Transmissão ao vivo</span>
-        <span class="it off"><span class="dot"></span> Fora deste formato</span>
-      </div>`;
-
-/* ==================================================================== *
- * 6. Comparador
- * ==================================================================== */
-const LINHAS_MATRIZ = [
-  ['Captação', 'sony-a7', 'Câmera Sony A7 III'],
-  ['Captação', 'ptz', 'Câmera PTZ 4K'],
-  ['Captação', 'zoom-cam', 'Câmeras pelo Zoom'],
-  ['Captação', 'slides', 'Slides por HDMI'],
-  ['Áudio', 'mic-dylan', 'Microfones Dylan'],
-  ['Áudio', 'lapela-sony', 'Lapela sem fio Sony'],
-  ['Áudio', 'zoom-audio', 'Áudio nativo do Zoom'],
-  ['Áudio', 'yamaha', 'Mesa Yamaha MG10XU'],
-  ['Áudio', 'scarlett', 'Scarlett 16i16'],
-  ['Áudio', 'isolador', 'Isolador de sinal'],
-  ['Corte e registro', 'atem', 'ATEM (mesa de cortes)'],
-  ['Corte e registro', 'atem-ssd', 'Gravação em SSD pela ATEM'],
-  ['Corte e registro', 'vmix', 'vMix'],
-  ['Distribuição', 'vimeo', 'Vimeo'],
-  ['Entrega', 'lw', 'Plataforma da Agroadvance (LW)'],
-  ['Entrega', 'zoom-embed', 'Embed do Zoom na plataforma'],
-  ['Entrega', 'edicao', 'Edição antes de publicar'],
-  ['Entrega', 'sala', 'Telão e PA no auditório'],
-];
-
-const COLUNAS = FORMATOS.flatMap((f) =>
-  CADEIAS[f.cadeias].map((c, i) => ({ formato: f, cadeia: c, idx: i }))
-);
-
-function achaEstado(cadeia, chave) {
-  for (const [, mods] of cadeia.estagios) {
-    for (const m of mods) {
-      if (String(m[3] || '').split(/\s+/).includes(chave)) return m[2];
-    }
-  }
-  return null;
-}
-
-function matrizHTML() {
-  const cabeca = COLUNAS.map((c) =>
-    `<th><span class="grupo">${esc(c.formato.num)} ${esc(c.formato.nav)}</span>${esc(c.cadeia.nome)}</th>`
-  ).join('');
-
-  let grupoAtual = '';
-  const linhas = LINHAS_MATRIZ.map(([grupo, chave, rotulo]) => {
-    let sep = '';
-    if (grupo !== grupoAtual) {
-      grupoAtual = grupo;
-      sep = `<tr class="grupo-linha"><th colspan="${COLUNAS.length + 1}">${esc(grupo)}</th></tr>`;
-    }
-    const celulas = COLUNAS.map((c) => {
-      const e = achaEstado(c.cadeia, chave);
-      if (!e) return '<td><span class="cel cel-na">—</span></td>';
-      return `<td><span class="cel cel-${e}"><span class="dot"></span>${ROTULO_ESTADO[e]}</span></td>`;
+              <span class="susp-tag t-${estado}">${ROTULO_ESTADO[estado]}</span>
+            </li>`;
     }).join('');
-    return `${sep}<tr><th>${esc(rotulo)}</th>${celulas}</tr>`;
+
+    const linhasFora = fora.map(([nome, papel]) => `<li class="susp fora">
+              <span class="ord">—</span>
+              <span class="susp-txt">
+                <span class="susp-nome">${esc(nome)}</span>
+                ${papel ? `<span class="susp-papel">${esc(papel)}</span>` : ''}
+              </span>
+              <span class="susp-tag t-off">Não investigar</span>
+            </li>`).join('');
+
+    return `<div class="etapa" data-area="${area}">
+            <div class="etapa-cab">
+              <h4>${esc(rotulo)}</h4>
+              <span class="etapa-area">${esc(AREAS[area].rotulo)}</span>
+            </div>
+            <ol class="susps">${linhas}${linhasFora}</ol>
+          </div>`;
   }).join('');
 
-  return `<div class="matriz-wrap">
-        <table class="matriz">
-          <thead><tr><th>Equipamento</th>${cabeca}</tr></thead>
-          <tbody>${linhas}</tbody>
-        </table>
+  return `<div class="cfg" id="${idCfg}">
+        <div class="cfg-cab">
+          <h3>${esc(cadeia.nome)}</h3>
+          <span class="cfg-nota">${esc(cadeia.nota)}</span>
+        </div>
+        <div class="etapas">${etapas}</div>
       </div>`;
 }
 
 /* ==================================================================== *
- * 6b. Mapa de equipamento -> em quantas configuracoes entra.
- *     Alimenta a barra de foco: "em 3 de 6 configuracoes".
+ * 8. Dados para a triagem rapida da home
  * ==================================================================== */
-const ROTULO_CHAVE = Object.fromEntries(LINHAS_MATRIZ.map(([, k, r]) => [k, r]));
-
-const CHAVES = (() => {
-  const mapa = {};
-  COLUNAS.forEach(({ cadeia }) => {
-    cadeia.estagios.forEach(([, mods]) => {
-      mods.forEach(([nome, , estado, chaves]) => {
-        String(chaves || '').split(/\s+/).filter(Boolean).forEach((k) => {
-          if (!mapa[k]) mapa[k] = { rotulo: ROTULO_CHAVE[k] || nome, usa: 0, fora: 0, total: COLUNAS.length };
-          estado === 'off' ? mapa[k].fora++ : mapa[k].usa++;
-        });
-      });
-    });
-  });
-  return mapa;
-})();
+const MANUAL = FORMATOS.map((f) => ({
+  slug: f.slug,
+  nav: f.nav,
+  titulo: f.titulo,
+  cfgs: CADEIAS[f.cadeias].map((c, i) => ({
+    nome: c.nome,
+    ancora: `${f.slug}/#cfg-${i}`,
+    etapas: c.estagios.map(([rotulo, area, mods]) => ({
+      rotulo, area,
+      mods: mods.map(([nome, papel, estado]) => ({ nome, papel, estado })),
+    })),
+  })),
+  resolvidos: (RESOLVIDOS[f.cadeias] || []).length,
+}));
 
 /* ==================================================================== *
- * 7. Indice de busca
+ * 9. Indice de busca
  * ==================================================================== */
 const INDICE = [];
 const indexa = (it) => INDICE.push(it);
@@ -455,29 +442,34 @@ FORMATOS.forEach((f) => {
   indexa({ t: f.titulo, s: f.resumo.slice(0, 100), h: `{B}${f.slug}/`, g: f.num, o: 'Formato', k: f.nav });
   CADEIAS[f.cadeias].forEach((c, i) => {
     indexa({ t: c.nome, s: `${c.nota} · ${f.titulo}`, h: `{B}${f.slug}/#cfg-${i}`, g: f.num, o: 'Configuração' });
-    c.estagios.forEach(([rotulo, mods]) => {
+    c.estagios.forEach(([rotulo, area, mods]) => {
       mods.forEach(([nome, papel, estado]) => {
         indexa({
           t: nome,
-          s: `${rotulo} · ${ROTULO_ESTADO[estado]} em ${c.nome}${papel ? ' · ' + papel : ''}`,
+          s: `${rotulo} · ${estado === 'off' ? 'não entra' : ROTULO_ESTADO[estado].toLowerCase()} em ${c.nome}${papel ? ' · ' + papel : ''}`,
           h: `{B}${f.slug}/#cfg-${i}`,
           g: estado === 'off' ? '×' : '•',
           o: f.nav,
-          k: `${rotulo} ${papel} ${estado === 'off' ? 'nao usa fora' : 'em uso'}`,
+          k: `${rotulo} ${AREAS[area].rotulo} ${AREAS[area].desc} ${papel}`,
         });
       });
     });
   });
+  (RESOLVIDOS[f.cadeias] || []).forEach((r) => {
+    indexa({ t: r.titulo, s: 'Já resolvido · ' + r.solucao.slice(0, 74), h: `{B}${f.slug}/#resolvidos`, g: '✓', o: f.nav, k: 'ruido resolvido historico isolador' });
+  });
 });
+if (GATILHOS.aovivo) {
+  indexa({ t: GATILHOS.aovivo.titulo, s: GATILHOS.aovivo.itens.join(' · '), h: '{B}aulas-ao-vivo/#gatilhos', g: '⚡', o: 'Aulas ao vivo', k: 'contingencia internet instavel limite lives vimeo vmix' });
+}
 
 /* ==================================================================== *
- * 8. Casca da pagina
+ * 10. Casca
  * ==================================================================== */
-function pagina({ titulo, desc, atual, corpo, base, indiceJson }) {
-  const nav = [
-    ...FORMATOS.map((f) => ({ href: `${base}${f.slug}/`, nome: f.nav, id: f.slug })),
-    { href: `${base}comparar/`, nome: 'Comparar', id: 'comparar' },
-  ].map((n) => `<a href="${n.href}"${atual === n.id ? ' aria-current="page"' : ''}>${esc(n.nome)}</a>`).join('');
+function pagina({ titulo, desc, atual, corpo, base, indiceJson, manualJson }) {
+  const nav = FORMATOS
+    .map((f) => `<a href="${base}${f.slug}/"${atual === f.slug ? ' aria-current="page"' : ''}>${esc(f.nav)}</a>`)
+    .join('');
 
   return `<meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -490,19 +482,17 @@ function pagina({ titulo, desc, atual, corpo, base, indiceJson }) {
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Familjen+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400;500&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="${base}assets/site.css">
-<script>/* evita piscar o tema claro antes do JS principal */(function(){try{var t=localStorage.getItem('av-tema');if(!t)t=matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';document.documentElement.setAttribute('data-theme',t)}catch(e){}})();</script>
-
-<div id="progress" role="presentation"></div>
+<script>/* evita piscar o tema errado antes do JS principal */(function(){try{var t=localStorage.getItem('av-tema');if(!t)t=matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';document.documentElement.setAttribute('data-theme',t)}catch(e){}})();</script>
 
 <header class="top">
   <div class="wrap">
     <a class="brand" href="${base}">
       <span class="mark" aria-hidden="true"><span></span></span>
-      <span class="txt"><b>Suporte AV</b><small>Agroadvance</small></span>
+      <span class="txt"><b>Manual de AV</b><small>Agroadvance</small></span>
     </a>
-    <nav aria-label="Seções">${nav}</nav>
+    <nav aria-label="Formatos">${nav}</nav>
     <div class="tools">
-      <button class="searchbtn" data-abre-paleta type="button" aria-label="Buscar equipamento ou formato">
+      <button class="searchbtn" data-abre-paleta type="button" aria-label="Buscar equipamento, sintoma ou formato">
         ${IC.lupa}<span class="rotulo">Buscar</span><span class="kbd">Ctrl K</span>
       </button>
       <button class="iconbtn" id="btnTema" type="button" aria-label="Alternar tema claro e escuro">
@@ -516,7 +506,7 @@ ${corpo}
 
 <footer>
   <div class="wrap">
-    <p>Artefatos de suporte audiovisual · Agroadvance</p>
+    <p>Manual de suporte audiovisual · Agroadvance</p>
     <p>Fonte dos textos: os <a href="https://github.com/lucasrmoura96/artefatos-av-agroadvance/tree/main/conteudo">arquivos .md no GitHub</a></p>
   </div>
 </footer>
@@ -525,7 +515,7 @@ ${corpo}
   <div class="paleta-box">
     <div class="paleta-input">
       ${IC.lupa}
-      <input id="paletaCampo" type="text" placeholder="Equipamento, formato ou sintoma…" autocomplete="off" spellcheck="false" aria-label="Termo de busca">
+      <input id="paletaCampo" type="text" placeholder="Equipamento, sintoma ou formato…" autocomplete="off" spellcheck="false" aria-label="Termo de busca">
       <span class="esc">esc</span>
     </div>
     <div class="paleta-lista" id="paletaLista" role="listbox" aria-label="Resultados"></div>
@@ -538,276 +528,288 @@ ${corpo}
 </div>
 
 <div id="toast" role="status" aria-live="polite"><span class="ok">${IC.check}</span><span class="msg"></span></div>
-
 <button id="aoTopo" type="button" aria-label="Voltar ao topo">${IC.topo}</button>
 
-<script>window.AV_INDICE=${indiceJson};window.AV_CHAVES=${JSON.stringify(CHAVES)};</script>
+<script>window.AV_INDICE=${indiceJson};${manualJson ? `window.AV_MANUAL=${manualJson};window.AV_AREAS=${JSON.stringify(AREAS)};` : ''}</script>
 <script src="${base}assets/site.js"></script>
 `;
 }
 
-const indicePara = (base) =>
-  JSON.stringify(INDICE.map((i) => ({ ...i, h: i.h.replace('{B}', base) })));
+const indicePara = (base) => JSON.stringify(INDICE.map((i) => ({ ...i, h: i.h.replace('{B}', base) })));
 
 /* ==================================================================== *
- * 9. Home
+ * 11. Home — a triagem rapida
  * ==================================================================== */
 const GLOSSARIO = [
-  ['ATEM Extreme ISO', 'Mesa de cortes. 8 entradas de vídeo e 2 canais de áudio independentes. Grava em SSD pela própria USB-C. Presente no evento presencial e no estúdio; ausente em tudo que é Zoom.'],
+  ['ATEM Extreme ISO', 'Mesa de cortes. 8 entradas de vídeo e 2 canais de áudio independentes; grava em SSD pela própria USB-C. Está no evento presencial e no estúdio. Não está em nada que seja Zoom.'],
   ['vMix', 'Software de produção. Recebe da ATEM por USB no estúdio, ou as câmeras direto do Zoom pelo plugin. Aplica o mockup visual, grava e transmite.'],
-  ['Vimeo', 'Veículo da transmissão ao vivo. Exclusivo do fluxo ao vivo: não aparece em aula gravada. Tem limite de lives simultâneas, e esse limite é um dos gatilhos da contingência.'],
+  ['Vimeo', 'Veículo da transmissão ao vivo, e só dela: não aparece em aula gravada. Tem limite de lives simultâneas, e esse limite é um dos gatilhos da contingência.'],
   ['Plataforma (LW)', 'Onde o aluno assiste. Recebe o player do Vimeo, ou o embed direto do Zoom no formato de contingência.'],
-  ['Zoom', 'Sala do professor nos formatos remotos. Nos cases, também divide os alunos em salas de grupo.'],
+  ['Zoom', 'Sala do professor nos formatos remotos. Nas aulas de cases, também divide os alunos em salas de grupo.'],
 ];
 
 function home() {
   const totalCfg = FORMATOS.reduce((n, f) => n + CADEIAS[f.cadeias].length, 0);
 
+  // passo 1: configuracao. Uma lista chapada das 6, agrupada por formato.
+  const opcoesCfg = FORMATOS.map((f) => {
+    const bts = CADEIAS[f.cadeias].map((c, i) =>
+      `<button type="button" class="opt" data-fmt="${f.slug}" data-cfg="${i}">${esc(c.nome)}</button>`
+    ).join('');
+    return `<div class="opt-grupo">
+            <span class="opt-grupo-rot">${esc(f.nav)}</span>
+            <div class="opt-linha">${bts}</div>
+          </div>`;
+  }).join('');
+
   const cards = FORMATOS.map((f) => {
-    const chips = CADEIAS[f.cadeias].map((c, i) =>
-      `<span class="chip${i === 0 ? ' chip-green' : ''}">${esc(c.nome)}</span>`).join('');
-    return `        <a class="fcard" data-anima href="./${f.slug}/">
+    const cfgs = CADEIAS[f.cadeias];
+    const nResolvidos = (RESOLVIDOS[f.cadeias] || []).length;
+    return `        <a class="fcard" href="./${f.slug}/">
           <span class="num">${esc(f.num)}</span>
           <h3>${esc(f.titulo)}</h3>
-          <span class="cfgs">${chips}</span>
-          <p>${esc(f.destaque)}</p>
-          <span class="go">Abrir a cadeia ${IC.seta}</span>
+          <span class="cfgs">${cfgs.map((c) => `<span class="chip">${esc(c.nome)}</span>`).join('')}</span>
+          <p>${esc(f.resumo)}</p>
+          <span class="fcard-pe">
+            <span class="go">Abrir o manual ${IC.seta}</span>
+            <span class="fcard-res">${nResolvidos ? nResolvidos + ' caso já resolvido' : 'nenhum caso documentado'}</span>
+          </span>
         </a>`;
   }).join('\n');
 
-  const gloss = GLOSSARIO.map(([k, txt]) => `        <div class="gcard" data-anima>
-          <span class="k"><span class="dot"></span>${esc(k)}</span>
+  const gloss = GLOSSARIO.map(([k, txt]) => `        <div class="gcard">
+          <span class="k">${esc(k)}</span>
           <p>${esc(txt)}</p>
         </div>`).join('\n');
 
+  // o caso resolvido aparece na home: e' o que mais evita retrabalho
+  const resolvidosHome = FORMATOS.flatMap((f) =>
+    (RESOLVIDOS[f.cadeias] || []).map((r) => `        <div class="res">
+          <div class="res-cab">
+            <span class="res-ic" aria-hidden="true">${IC.ok}</span>
+            <div>
+              <h3>${esc(r.titulo)}</h3>
+              <span class="res-onde">${esc(f.titulo)} · ${esc(r.fonte)}</span>
+            </div>
+          </div>
+          <dl class="res-dl">
+            <dt>Era</dt><dd>${esc(r.causa)}</dd>
+            <dt>Resolveu</dt><dd>${esc(r.solucao)}</dd>
+            <dt>Estado</dt><dd>${esc(r.estado)}</dd>
+          </dl>
+        </div>`)).join('\n');
+
   const corpo = `<main>
-  <div class="hero">
+  <div class="hero hero-curto">
     <div class="wrap">
-      <div class="hero-top">
-        <span class="eyebrow">Suporte operacional de audiovisual</span>
-        <span class="rule"></span>
-        <span class="eyebrow">${FORMATOS.length} formatos · ${totalCfg} configurações</span>
-      </div>
-      <h1>Antes de abrir o chamado,<br><span class="dim">olhe</span> <span class="mark-green">a cadeia</span>.</h1>
-      <p class="lead">Cada formato acende um conjunto diferente de equipamentos. Metade do diagnóstico é saber <b>o que nem está ligado</b> naquele formato — não faz sentido investigar a ATEM num problema do híbrido, onde ela não entra.</p>
-      <div class="hero-cta">
-        <button class="btn btn-primary" data-abre-paleta type="button">${IC.lupa} Buscar equipamento ou sintoma <span class="meta">Ctrl K</span></button>
-        <a class="btn btn-outline" href="./comparar/">${IC.grade} Comparar as ${totalCfg} configurações</a>
-      </div>
+      <span class="eyebrow">Manual de suporte · audiovisual</span>
+      <h1>Deu problema<br><span class="dim">na aula?</span></h1>
+      <p class="lead">Diga em que configuração você está e onde está o problema. O manual devolve <b>quem está na cadeia, na ordem do sinal</b> — e, o que economiza mais tempo, <b>o que não está em jogo</b> naquele formato.</p>
     </div>
   </div>
 
-  <section data-anima-grupo>
+  <section id="triagem-rapida">
+    <div class="wrap">
+      <div class="tri">
+        <div class="tri-passo">
+          <div class="tri-num">1</div>
+          <div class="tri-corpo">
+            <h2>Em que configuração você está?</h2>
+            <p class="tri-ajuda">Se não souber, abra o formato lá embaixo — a diferença entre elas está descrita.</p>
+            <div class="opt-lista" id="optCfg">
+${opcoesCfg}
+            </div>
+          </div>
+        </div>
+
+        <div class="tri-passo" id="passo2" hidden>
+          <div class="tri-num">2</div>
+          <div class="tri-corpo">
+            <h2>Onde está o problema?</h2>
+            <div class="opt-linha" id="optArea"></div>
+          </div>
+        </div>
+
+        <div class="tri-saida" id="triSaida" hidden></div>
+      </div>
+    </div>
+  </section>
+
+  ${resolvidosHome ? `<section id="resolvidos">
     <div class="wrap">
       <div class="sec-head">
-        <h2>Escolha o formato</h2>
+        <h2>Já resolvido — não reabrir</h2>
         <span class="rule"></span>
-        <span class="count">${FORMATOS.length} formatos</span>
       </div>
-      <p class="sec-sub">Dentro de cada um estão a cadeia de sinal, a triagem que monta o pacote para a IA, e os dois documentos completos.</p>
+      <p class="sec-sub">O que já foi diagnosticado e encerrado. Se o sintoma bater com um destes, a causa já é conhecida.</p>
+${resolvidosHome}
+      <p class="vazio-nota">${IC.aviso} Aulas ao vivo e aulas gravadas ainda não têm nenhum caso documentado. Cada diagnóstico que o time fechar deve entrar no artefato do formato, para não ser reinvestigado.</p>
+    </div>
+  </section>` : ''}
+
+  <section>
+    <div class="wrap">
+      <div class="sec-head">
+        <h2>Os ${FORMATOS.length} formatos</h2>
+        <span class="rule"></span>
+        <span class="count">${totalCfg} configurações</span>
+      </div>
       <div class="grid-formats">
 ${cards}
       </div>
     </div>
   </section>
 
-  <section data-anima-grupo style="padding-top:0">
+  <section>
     <div class="wrap">
       <div class="sec-head">
-        <h2>Onde cada equipamento entra</h2>
+        <h2>O que é cada equipamento</h2>
         <span class="rule"></span>
-        <span class="count">${GLOSSARIO.length} peças-chave</span>
       </div>
+      <p class="sec-sub">Para quem apresenta e não opera: o que cada peça faz, e em que formato ela aparece.</p>
       <div class="grid-gloss">
 ${gloss}
       </div>
     </div>
   </section>
 
-  <section id="prompt" style="padding-top:0">
+  <section id="prompt">
     <div class="wrap">
       <div class="sec-head">
-        <h2>Como usar com a IA</h2>
+        <h2>Se não estiver aqui</h2>
         <span class="rule"></span>
       </div>
-      <div class="triagem">
-        <div class="triagem-head">
-          <span class="ic" aria-hidden="true">${IC.doc}</span>
-          <div>
-            <h3>Um prompt, três formatos</h3>
-            <p>O mesmo prompt introdutório serve para tudo. Dentro de cada formato, a triagem monta o pacote completo — prompt, descritivo, artefato e o seu relato — na ordem que a IA espera.</p>
-          </div>
+      <div class="ia">
+        <div>
+          <p>Sintoma novo, que o manual não cobre? Aí vale levar para uma IA. Dentro de cada formato há um botão que monta o pacote — prompt, descritivo, artefato e o seu relato — na ordem que a IA espera.</p>
+          <p class="ia-nota">Quando o diagnóstico fechar, escreva o resultado no artefato do formato. É assim que o manual para de mandar gente para a IA.</p>
         </div>
-        <div class="triagem-body" style="grid-template-columns:1fr">
-          <div>
-            <ol style="padding-left:20px;color:var(--c-muted);font-size:14px;display:grid;gap:6px">
-              <li>Abra a página do formato em que você está.</li>
-              <li>Preencha a triagem: configuração, ponto da cadeia, sintoma e o que já tentou.</li>
-              <li>Copie o pacote e cole numa conversa nova.</li>
-            </ol>
-            <div class="copias" style="margin-top:16px;max-width:280px">
-              <button class="btn btn-outline" data-copiar="raw-prompt" data-ok="Prompt copiado" type="button">${IC.copia} <span class="rotulo">Copiar só o prompt</span></button>
-            </div>
-          </div>
-        </div>
+        <button class="btn btn-outline" data-copiar="raw-prompt" data-ok="Prompt copiado" type="button">${IC.copia} <span class="rotulo">Copiar só o prompt</span></button>
       </div>
-      <details class="doc" style="margin-top:14px">
-        <summary>
-          <span class="ic" aria-hidden="true">${IC.doc}</span>
-          <span><span class="t">Ler o prompt introdutório</span><span class="arq">prompt-introdutorio.md</span></span>
-          ${IC.chev}
-        </summary>
-        <div class="md">${md2html(PROMPT).html}</div>
-      </details>
     </div>
   </section>
 </main>
 ${bruto('raw-prompt', PROMPT_CHAT)}`;
 
   return pagina({
-    titulo: 'Suporte AV · Agroadvance',
-    desc: 'Cadeia técnica dos formatos de evento e aula da Agroadvance, com o pacote pronto para colar num chat de IA.',
+    titulo: 'Manual de AV · Agroadvance',
+    desc: 'Manual de consulta durante eventos e aulas: quem está na cadeia de sinal de cada formato, o que não está em jogo, e o que já foi resolvido.',
     atual: null,
     corpo,
     base: './',
     indiceJson: indicePara('./'),
+    manualJson: JSON.stringify(MANUAL),
   });
 }
 
 /* ==================================================================== *
- * 10. Pagina de formato
+ * 12. Pagina de formato — o manual
  * ==================================================================== */
 function corpoFormato(f) {
   const artefato = leia(join(f.pasta, f.arquivos.artefato));
   const descritivo = leia(join(f.pasta, f.arquivos.descritivo));
   const cfgs = CADEIAS[f.cadeias];
-
-  const rails = cfgs.map((c, i) => railHTML(c, `cfg-${i}`)).join('\n');
-  const optCfg = cfgs.map((c) => `<option value="${esc(c.nome)}">${esc(c.nome)}</option>`).join('');
-  const etapas = [...new Set(cfgs.flatMap((c) => c.estagios.map(([r]) => r)))];
-  const optEtapa = etapas.map((e) => `<option value="${esc(e)}">${esc(e)}</option>`).join('');
+  const resolvidos = RESOLVIDOS[f.cadeias] || [];
+  const gatilhos = GATILHOS[f.cadeias];
+  const naoProcure = NAO_PROCURE[f.cadeias] || [];
 
   const mdArtefato = md2html(artefato, { semTitulo: true, prefixoId: 'a-' });
   const mdDescritivo = md2html(descritivo, { semTitulo: true, prefixoId: 'd-' });
 
-  // as secoes dos documentos entram na busca
   [...mdArtefato.secoes.map((s) => ({ ...s, doc: 'Artefato' })),
    ...mdDescritivo.secoes.map((s) => ({ ...s, doc: 'Descritivo' }))]
     .forEach((s) => indexa({
       t: s.texto, s: `${s.doc} · ${f.titulo}`, h: `{B}${f.slug}/#${s.id}`, g: '§', o: f.nav,
     }));
 
-  return `<main>
-  <div class="hero">
+  // abas de configuracao quando ha mais de uma
+  const abas = cfgs.length > 1
+    ? `<div class="abas" role="tablist" aria-label="Configuração técnica">
+        ${cfgs.map((c, i) => `<button type="button" role="tab" data-aba="cfg-${i}" aria-selected="${i === 0}">${esc(c.nome)}</button>`).join('')}
+      </div>`
+    : '';
+
+  const listas = cfgs.map((c, i) => suspeitosHTML(c, `cfg-${i}`)).join('\n');
+
+  const blocoNaoProcure = naoProcure.length ? `      <div class="alerta alerta-neg">
+        <span class="alerta-ic" aria-hidden="true">${IC.proibido}</span>
+        <div>
+          <h3>Onde não procurar</h3>
+          <ul>${naoProcure.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>
+        </div>
+      </div>` : '';
+
+  const blocoGatilhos = gatilhos ? `  <section id="gatilhos">
     <div class="wrap">
-      <div class="hero-top">
-        <span class="eyebrow">Formato ${esc(f.num)}</span>
-        <span class="rule"></span>
-        <span class="eyebrow">${cfgs.length} ${cfgs.length > 1 ? 'configurações técnicas' : 'configuração'}</span>
+      <div class="sec-head"><h2>${esc(gatilhos.titulo)}</h2><span class="rule"></span></div>
+      <div class="alerta alerta-aviso">
+        <span class="alerta-ic" aria-hidden="true">${IC.raio}</span>
+        <div>
+          <p>${esc(gatilhos.intro)}</p>
+          <ul>${gatilhos.itens.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>
+          <p class="alerta-nota">${esc(gatilhos.nota)} <span class="fonte">${esc(gatilhos.fonte)}</span></p>
+        </div>
       </div>
-      <h1>${esc(f.h1[0])}<br><span class="dim">${esc(f.h1[1])}</span></h1>
+    </div>
+  </section>` : '';
+
+  const blocoResolvidos = `  <section id="resolvidos">
+    <div class="wrap">
+      <div class="sec-head"><h2>Já resolvido — não reabrir</h2><span class="rule"></span></div>
+${resolvidos.length ? resolvidos.map((r) => `      <div class="res">
+        <div class="res-cab">
+          <span class="res-ic" aria-hidden="true">${IC.ok}</span>
+          <div><h3>${esc(r.titulo)}</h3><span class="res-onde">${esc(r.fonte)}</span></div>
+        </div>
+        <dl class="res-dl">
+          <dt>Era</dt><dd>${esc(r.causa)}</dd>
+          <dt>Resolveu</dt><dd>${esc(r.solucao)}</dd>
+          <dt>Estado</dt><dd>${esc(r.estado)}</dd>
+        </dl>
+      </div>`).join('\n') : `      <div class="vazio">
+        <p><strong>Nenhum caso documentado ainda para este formato.</strong></p>
+        <p>O artefato reserva esta seção, mas ela está em branco. Quando o time fechar um diagnóstico aqui, escreva no artefato — é o que evita reinvestigar o mesmo problema.</p>
+      </div>`}
+    </div>
+  </section>`;
+
+  return `<main>
+  <div class="hero hero-curto">
+    <div class="wrap">
+      <span class="eyebrow">Formato ${esc(f.num)} · ${cfgs.length} ${cfgs.length > 1 ? 'configurações' : 'configuração'}</span>
+      <h1>${esc(f.titulo)}</h1>
       <p class="lead">${esc(f.resumo)}</p>
+      <div class="atalhos">
+        <a href="#suspeitos">Cadeia de sinal</a>
+        <a href="#resolvidos">Já resolvido</a>
+        ${gatilhos ? '<a href="#gatilhos">Contingência</a>' : ''}
+        <a href="#documentos">Documentos</a>
+        <a href="#ia">Levar para a IA</a>
+      </div>
     </div>
   </div>
 
-  <section>
+  <section id="suspeitos">
     <div class="wrap">
-      <div class="sec-head">
-        <h2>${cfgs.length > 1 ? 'Cadeias de sinal' : 'Cadeia de sinal'}</h2>
-        <span class="rule"></span>
-        <div class="seg" data-seg="vista" role="tablist" aria-label="Vista da cadeia">
-          <span class="ind" aria-hidden="true"></span>
-          <button type="button" data-v="plano" role="tab" aria-selected="true">${IC.grade} Plano</button>
-          <button type="button" data-v="3d" role="tab" aria-selected="false">${IC.cubo} 3D</button>
-        </div>
+      <div class="sec-head"><h2>Quem está na cadeia</h2><span class="rule"></span></div>
+      <p class="sec-sub">Na ordem do sinal. Comece pelo primeiro da etapa onde está o sintoma e vá descendo.</p>
+      ${abas}
+      <div class="cfgs-corpo">
+${listas}
       </div>
-      <p class="sec-sub">${esc(f.destaque)} <strong style="color:var(--c-text)">Clique num equipamento</strong> para acendê-lo nas outras configurações.</p>
-      ${LEGENDA}
-      <div id="cadeias">
-        <div class="foco-barra" id="focoBarra" hidden>
-          <span class="nome"></span>
-          <span class="conta"></span>
-          <span class="acoes">
-            <a href="../comparar/">ver na matriz completa</a>
-            <button type="button">limpar</button>
-          </span>
-        </div>
-${rails}
-      </div>
-      <p class="dica3d" style="display:none">${IC.cubo} A altura do card mostra o quanto o equipamento está em jogo: quanto mais em uso, mais ele flutua.</p>
-      <p class="dica-rolar">${IC.seta} Arraste a cadeia para o lado para ver todos os estágios.</p>
+${blocoNaoProcure}
     </div>
   </section>
 
-  <section style="padding-top:0">
-    <div class="wrap">
-      <div class="sec-head">
-        <h2>Levar para o chat</h2>
-        <span class="rule"></span>
-      </div>
-      <div class="triagem" id="triagem" data-formato="${esc(f.titulo)}">
-        <div class="triagem-head">
-          <span class="ic" aria-hidden="true">${IC.alerta}</span>
-          <div>
-            <h3>Triagem do problema</h3>
-            <p>O prompt pede formato, sintoma exato e o que já foi tentado — sem isso a IA vai perguntar antes de ajudar. Preencha aqui e o botão copia tudo junto, já formatado.</p>
-          </div>
-        </div>
-        <div class="triagem-body">
-          <div class="campos">
-            <div class="campo">
-              <label for="tCfg">Configuração técnica em uso</label>
-              <select id="tCfg">
-                <option value="">Não sei / não se aplica</option>
-                ${optCfg}
-              </select>
-            </div>
-            <div class="campo">
-              <label for="tEtapa">Onde parece estar</label>
-              <select id="tEtapa">
-                <option value="">Não sei</option>
-                ${optEtapa}
-              </select>
-              <span class="ajuda">Se não souber, deixe em branco — a cadeia acima ajuda a isolar.</span>
-            </div>
-            <div class="campo">
-              <label for="tSintoma">Sintoma exato</label>
-              <textarea id="tSintoma" placeholder="O que aconteceu, e em que ponto da aula ou do evento."></textarea>
-            </div>
-            <div class="campo">
-              <label for="tTentou">O que já tentou</label>
-              <textarea id="tTentou" placeholder="Mesmo que não tenha funcionado. Se não tentou nada, deixe em branco." style="min-height:56px"></textarea>
-            </div>
-          </div>
-          <div class="triagem-lado">
-            <div class="resumo">
-              <b>No pacote</b>
-              <ul id="tResumo"></ul>
-            </div>
-            <span class="contagem" id="tContagem"></span>
-            <button class="btn btn-green btn-block" id="tCopiar" type="button">${IC.copia} <span class="rotulo">Copiar o pacote</span></button>
-            <button class="btn btn-ghost btn-block" id="tCopiarRelato" type="button"><span class="rotulo">Só o meu relato</span></button>
-          </div>
-        </div>
-      </div>
+${blocoResolvidos}
 
-      <div class="copias" style="margin-top:14px">
-        <button class="btn btn-outline" data-copiar="raw-prompt,raw-descritivo,raw-artefato" data-ok="Pacote copiado" type="button">${IC.copia} <span class="rotulo">Pacote sem relato</span></button>
-        <button class="btn btn-outline" data-copiar="raw-artefato" data-ok="Artefato copiado" type="button">${IC.copia} <span class="rotulo">Só o artefato</span></button>
-        <button class="btn btn-outline" data-copiar="raw-descritivo" data-ok="Descritivo copiado" type="button">${IC.copia} <span class="rotulo">Só o descritivo</span></button>
-        <button class="btn btn-outline" data-copiar="raw-prompt" data-ok="Prompt copiado" type="button">${IC.copia} <span class="rotulo">Só o prompt</span></button>
-      </div>
-    </div>
-  </section>
+${blocoGatilhos}
 
-  <section style="padding-top:0">
+  <section id="documentos">
     <div class="wrap">
-      <div class="sec-head">
-        <h2>Documentos completos</h2>
-        <span class="rule"></span>
-        <span class="count">2 arquivos</span>
-      </div>
-      <details class="doc" open>
+      <div class="sec-head"><h2>Documentos completos</h2><span class="rule"></span><span class="count">2 arquivos</span></div>
+      <p class="sec-sub">O texto integral, do jeito que está no pacote. É daqui que sai tudo acima.</p>
+      <details class="doc">
         <summary>
           <span class="ic" aria-hidden="true">${IC.doc}</span>
           <span><span class="t">Artefato de operação</span><span class="arq">${esc(f.arquivos.artefato)}</span></span>
@@ -825,6 +827,52 @@ ${rails}
       </details>
     </div>
   </section>
+
+  <section id="ia">
+    <div class="wrap">
+      <div class="sec-head"><h2>Se não estiver aqui</h2><span class="rule"></span></div>
+      <div class="triagem" id="triagem" data-formato="${esc(f.titulo)}">
+        <div class="triagem-head">
+          <div>
+            <h3>Montar o pacote para a IA</h3>
+            <p>Só quando o manual não resolveu. Preencha e o botão copia prompt, descritivo, artefato e o seu relato — na ordem que a IA espera.</p>
+          </div>
+        </div>
+        <div class="triagem-body">
+          <div class="campos">
+            <div class="campo">
+              <label for="tCfg">Configuração em uso</label>
+              <select id="tCfg">
+                <option value="">Não sei</option>
+                ${cfgs.map((c) => `<option value="${esc(c.nome)}">${esc(c.nome)}</option>`).join('')}
+              </select>
+            </div>
+            <div class="campo">
+              <label for="tEtapa">Onde parece estar</label>
+              <select id="tEtapa">
+                <option value="">Não sei</option>
+                ${[...new Set(cfgs.flatMap((c) => c.estagios.map(([r]) => r)))].map((e) => `<option value="${esc(e)}">${esc(e)}</option>`).join('')}
+              </select>
+            </div>
+            <div class="campo">
+              <label for="tSintoma">Sintoma exato</label>
+              <textarea id="tSintoma" placeholder="O que aconteceu, e em que ponto da aula ou do evento."></textarea>
+            </div>
+            <div class="campo">
+              <label for="tTentou">O que já tentou</label>
+              <textarea id="tTentou" placeholder="Mesmo que não tenha funcionado." style="min-height:56px"></textarea>
+            </div>
+          </div>
+          <div class="triagem-lado">
+            <div class="resumo"><b>No pacote</b><ul id="tResumo"></ul></div>
+            <span class="contagem" id="tContagem"></span>
+            <button class="btn btn-green btn-block" id="tCopiar" type="button">${IC.copia} <span class="rotulo">Copiar o pacote</span></button>
+            <button class="btn btn-ghost btn-block" id="tCopiarRelato" type="button"><span class="rotulo">Só o meu relato</span></button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
 </main>
 ${bruto('raw-prompt', PROMPT_CHAT)}
 ${bruto('raw-artefato', artefato)}
@@ -832,57 +880,11 @@ ${bruto('raw-descritivo', descritivo)}`;
 }
 
 /* ==================================================================== *
- * 11. Pagina de comparacao
- * ==================================================================== */
-function corpoComparar() {
-  return `<main>
-  <div class="hero">
-    <div class="wrap">
-      <div class="hero-top">
-        <span class="eyebrow">Comparação</span>
-        <span class="rule"></span>
-        <span class="eyebrow">${COLUNAS.length} configurações · ${LINHAS_MATRIZ.length} itens</span>
-      </div>
-      <h1>Quem usa <span class="mark-green">o quê</span>,<br><span class="dim">e quem não usa.</span></h1>
-      <p class="lead">A pergunta que o diagnóstico faz toda hora: <b>este equipamento está em jogo neste formato?</b> Aqui a resposta sai das ${COLUNAS.length} configurações de uma vez.</p>
-    </div>
-  </div>
-
-  <section>
-    <div class="wrap">
-      ${LEGENDA}
-      ${matrizHTML()}
-      <p class="sec-sub" style="margin:16px 0 0">
-        <strong style="color:var(--c-text)">—</strong> quer dizer que o equipamento não aparece no descritivo daquele formato.
-        <strong style="color:var(--c-text)">Não usa</strong> é diferente: o documento diz explicitamente que ele fica de fora, e é esse "fica de fora" que evita diagnóstico perdido.
-      </p>
-    </div>
-  </section>
-
-  <section style="padding-top:0">
-    <div class="wrap">
-      <div class="sec-head"><h2>Ir para o formato</h2><span class="rule"></span></div>
-      <div class="grid-formats">
-${FORMATOS.map((f) => `        <a class="fcard" href="../${f.slug}/">
-          <span class="num">${esc(f.num)}</span>
-          <h3>${esc(f.titulo)}</h3>
-          <p>${esc(f.destaque)}</p>
-          <span class="go">Abrir a cadeia ${IC.seta}</span>
-        </a>`).join('\n')}
-      </div>
-    </div>
-  </section>
-</main>`;
-}
-
-/* ==================================================================== *
- * 12. Escrita
+ * 13. Escrita
  * ==================================================================== */
 rmSync(OUT, { recursive: true, force: true });
 mkdirSync(join(OUT, 'assets'), { recursive: true });
-for (const a of ['site.css', 'site.js']) {
-  copyFileSync(join(RAIZ, 'assets', a), join(OUT, 'assets', a));
-}
+for (const a of ['site.css', 'site.js']) copyFileSync(join(RAIZ, 'assets', a), join(OUT, 'assets', a));
 copyFileSync(join(RAIZ, 'assets', 'favicon.svg'), join(OUT, 'favicon.svg'));
 
 mkdirSync(join(OUT, 'conteudo'), { recursive: true });
@@ -896,20 +898,14 @@ for (const f of FORMATOS) {
 }
 writeFileSync(join(OUT, '.nojekyll'), '');
 
-// os corpos primeiro: renderizar formato alimenta o indice com as secoes dos
-// documentos, e a casca precisa do indice ja completo.
+// os formatos primeiro: eles alimentam o indice com as secoes dos documentos
 const corpos = FORMATOS.map((f) => ({ f, corpo: corpoFormato(f) }));
-const corpoCmp = corpoComparar();
-
-indexa({ t: 'Comparar os formatos', s: 'Matriz de equipamento por configuração técnica', h: '{B}comparar/', g: '⇄', o: 'Página' });
-indexa({ t: 'Prompt introdutório', s: 'O texto que abre a conversa com a IA', h: '{B}#prompt', g: '¶', o: 'Início' });
 
 writeFileSync(join(OUT, 'index.html'), home());
-
 for (const { f, corpo } of corpos) {
   mkdirSync(join(OUT, f.slug), { recursive: true });
   writeFileSync(join(OUT, f.slug, 'index.html'), pagina({
-    titulo: `${f.titulo} · Suporte AV Agroadvance`,
+    titulo: `${f.titulo} · Manual de AV Agroadvance`,
     desc: f.resumo,
     atual: f.slug,
     corpo,
@@ -918,14 +914,4 @@ for (const { f, corpo } of corpos) {
   }));
 }
 
-mkdirSync(join(OUT, 'comparar'), { recursive: true });
-writeFileSync(join(OUT, 'comparar', 'index.html'), pagina({
-  titulo: 'Comparar os formatos · Suporte AV Agroadvance',
-  desc: 'Matriz de equipamento por configuração técnica nos formatos de evento e aula da Agroadvance.',
-  atual: 'comparar',
-  corpo: corpoCmp,
-  base: '../',
-  indiceJson: indicePara('../'),
-}));
-
-console.log(`ok — ${FORMATOS.length + 2} páginas, ${INDICE.length} itens no índice de busca`);
+console.log(`ok — ${FORMATOS.length + 1} páginas, ${INDICE.length} itens na busca`);

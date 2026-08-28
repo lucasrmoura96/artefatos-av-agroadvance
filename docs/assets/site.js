@@ -1,13 +1,12 @@
-/* Suporte AV — Agroadvance
-   Tema, busca, vista da cadeia, foco por equipamento, triagem e cópia. */
+/* Manual de AV — Agroadvance
+   Triagem rápida, abas de configuração, busca, tema e cópia do pacote. */
 (function () {
   'use strict';
 
-  var paradoQuietoPor = window.matchMedia('(prefers-reduced-motion: reduce)');
-  var reduzMovimento = paradoQuietoPor.matches;
+  var reduzMovimento = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   /* ================================================================ *
-   * Aviso (toast)
+   * Aviso
    * ================================================================ */
   var toast = document.getElementById('toast');
   var toastTimer = null;
@@ -18,21 +17,18 @@
     if (alvo) alvo.textContent = msg; else toast.textContent = msg;
     toast.setAttribute('data-show', '1');
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(function () { toast.removeAttribute('data-show'); }, 2400);
+    toastTimer = setTimeout(function () { toast.removeAttribute('data-show'); }, 2600);
   }
 
   /* ================================================================ *
-   * Tema — segue o sistema até a pessoa escolher, aí grava
+   * Tema
    * ================================================================ */
-  var TEMA_KEY = 'av-tema';
   var btnTema = document.getElementById('btnTema');
-
   if (btnTema) {
     btnTema.addEventListener('click', function () {
       var novo = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
       document.documentElement.setAttribute('data-theme', novo);
-      try { localStorage.setItem(TEMA_KEY, novo); } catch (e) {}
-      aviso(novo === 'dark' ? 'Tema escuro' : 'Tema claro');
+      try { localStorage.setItem('av-tema', novo); } catch (e) {}
     });
   }
 
@@ -45,9 +41,7 @@
   }
 
   function copiar(str) {
-    if (navigator.clipboard && window.isSecureContext) {
-      return navigator.clipboard.writeText(str);
-    }
+    if (navigator.clipboard && window.isSecureContext) return navigator.clipboard.writeText(str);
     return new Promise(function (ok, falha) {
       var ta = document.createElement('textarea');
       ta.value = str;
@@ -88,172 +82,153 @@
   });
 
   /* ================================================================ *
-   * Onda no clique dos botões
+   * Triagem rápida (home): configuração -> área -> suspeitos
    * ================================================================ */
-  if (!reduzMovimento) {
-    document.addEventListener('pointerdown', function (ev) {
-      var btn = ev.target.closest('.btn');
-      if (!btn) return;
-      var r = btn.getBoundingClientRect();
-      var d = Math.max(r.width, r.height);
-      var onda = document.createElement('span');
-      onda.className = 'onda';
-      onda.style.width = onda.style.height = d + 'px';
-      onda.style.left = (ev.clientX - r.left - d / 2) + 'px';
-      onda.style.top = (ev.clientY - r.top - d / 2) + 'px';
-      btn.appendChild(onda);
-      setTimeout(function () { onda.remove(); }, 600);
-    });
-  }
+  var MANUAL = window.AV_MANUAL || null;
+  var AREAS = window.AV_AREAS || {};
+  var optCfg = document.getElementById('optCfg');
 
-  /* ================================================================ *
-   * Vista da cadeia: plana ou 3D (o fundo não se move; os cards flutuam)
-   * ================================================================ */
-  var VISTA_KEY = 'av-vista';
-  var segVista = document.querySelector('.seg[data-seg="vista"]');
+  if (MANUAL && optCfg) {
+    var passo2 = document.getElementById('passo2');
+    var optArea = document.getElementById('optArea');
+    var saida = document.getElementById('triSaida');
+    var escolha = { fmt: null, cfg: null, area: null };
 
-  function moveIndicador(seg) {
-    var ind = seg.querySelector('.ind');
-    var ativo = seg.querySelector('button[aria-selected="true"]');
-    if (!ind || !ativo) return;
-    ind.style.width = ativo.offsetWidth + 'px';
-    ind.style.transform = 'translateX(' + (ativo.offsetLeft - 3) + 'px)';
-  }
+    function achaCfg() {
+      var f = MANUAL.filter(function (x) { return x.slug === escolha.fmt; })[0];
+      return f ? { formato: f, cfg: f.cfgs[escolha.cfg] } : null;
+    }
 
-  function defineVista(v) {
-    document.querySelectorAll('.scene').forEach(function (s) { s.setAttribute('data-vista', v); });
-    if (segVista) {
-      segVista.querySelectorAll('button').forEach(function (b) {
-        b.setAttribute('aria-selected', String(b.getAttribute('data-v') === v));
+    function pintaAreas() {
+      var c = achaCfg();
+      if (!c) return;
+      // só as áreas que existem nessa configuração, na ordem da cadeia
+      var vistas = [];
+      c.cfg.etapas.forEach(function (e) {
+        if (vistas.indexOf(e.area) < 0) vistas.push(e.area);
       });
-      moveIndicador(segVista);
+      optArea.innerHTML = vistas.map(function (a) {
+        var meta = AREAS[a] || { rotulo: a, desc: '' };
+        return '<button type="button" class="opt opt-area" data-area="' + a + '"' +
+          (escolha.area === a ? ' aria-pressed="true"' : '') + '>' +
+          '<b>' + meta.rotulo + '</b><small>' + meta.desc + '</small></button>';
+      }).join('');
+      passo2.hidden = false;
     }
-    document.querySelectorAll('.dica3d').forEach(function (d) {
-      d.style.display = v === '3d' ? 'flex' : 'none';
-    });
-  }
 
-  if (segVista) {
-    var inicial = 'plano';
-    try { inicial = localStorage.getItem(VISTA_KEY) || 'plano'; } catch (e) {}
-    defineVista(inicial);
-    // o indicador precisa das fontes carregadas para medir certo
-    if (document.fonts && document.fonts.ready) {
-      document.fonts.ready.then(function () { moveIndicador(segVista); });
+    function pintaSaida() {
+      var c = achaCfg();
+      if (!c || !escolha.area) { saida.hidden = true; return; }
+
+      var etapas = c.cfg.etapas.filter(function (e) { return e.area === escolha.area; });
+      var ativos = [];
+      var fora = [];
+      etapas.forEach(function (e) {
+        e.mods.forEach(function (m) {
+          (m.estado === 'off' ? fora : ativos).push({ etapa: e.rotulo, mod: m });
+        });
+      });
+
+      // o que não entra na configuração toda, não só nesta área
+      var foraGeral = [];
+      c.cfg.etapas.forEach(function (e) {
+        e.mods.forEach(function (m) {
+          if (m.estado === 'off' && foraGeral.indexOf(m.nome) < 0) foraGeral.push(m.nome);
+        });
+      });
+
+      var meta = AREAS[escolha.area] || { rotulo: escolha.area };
+      var n = 0;
+      var listaAtivos = ativos.map(function (x) {
+        n++;
+        var tag = x.mod.estado === 'live' ? 'Ao vivo' : (x.mod.estado === 'bkp' ? 'Eventual' : 'Em uso');
+        return '<li class="susp" data-s="' + x.mod.estado + '">' +
+          '<span class="ord">' + n + '</span>' +
+          '<span class="susp-txt"><span class="susp-nome">' + x.mod.nome + '</span>' +
+          '<span class="susp-papel">' + x.etapa + (x.mod.papel ? ' · ' + x.mod.papel : '') + '</span></span>' +
+          '<span class="susp-tag t-' + x.mod.estado + '">' + tag + '</span></li>';
+      }).join('');
+
+      saida.innerHTML =
+        '<div class="tri-res">' +
+          '<div class="tri-res-cab">' +
+            '<span class="eyebrow">' + meta.rotulo + ' · ' + c.cfg.nome + '</span>' +
+            '<h3>' + (ativos.length ? 'Verifique nesta ordem' : 'Nada em uso nesta área') + '</h3>' +
+          '</div>' +
+          (ativos.length
+            ? '<ol class="susps">' + listaAtivos + '</ol>'
+            : '<p class="tri-nada">Nesta configuração esta etapa não existe — não há o que investigar aqui. ' +
+              'Se o sintoma é real, ele está em outra área da cadeia.</p>') +
+          (fora.length ? '<p class="tri-fora"><b>Nesta área, não investigue:</b> ' +
+            fora.map(function (x) { return x.mod.nome; }).join(', ') + '.</p>' : '') +
+          (foraGeral.length ? '<p class="tri-fora tri-fora-geral"><b>Fora desta configuração como um todo:</b> ' +
+            foraGeral.join(', ') + '.</p>' : '') +
+          '<div class="tri-res-pe">' +
+            '<a class="btn btn-primary" href="./' + c.cfg.ancora + '">Abrir o manual completo</a>' +
+            '<a class="btn btn-ghost" href="./' + c.formato.slug + '/#ia">Não é nada disso · levar para a IA</a>' +
+          '</div>' +
+        '</div>';
+      saida.hidden = false;
     }
-    window.addEventListener('resize', function () { moveIndicador(segVista); });
 
-    segVista.addEventListener('click', function (ev) {
-      var b = ev.target.closest('button[data-v]');
+    optCfg.addEventListener('click', function (ev) {
+      var b = ev.target.closest('button[data-cfg]');
       if (!b) return;
-      var v = b.getAttribute('data-v');
-      defineVista(v);
-      try { localStorage.setItem(VISTA_KEY, v); } catch (e) {}
+      optCfg.querySelectorAll('button').forEach(function (x) { x.removeAttribute('aria-pressed'); });
+      b.setAttribute('aria-pressed', 'true');
+      escolha.fmt = b.getAttribute('data-fmt');
+      escolha.cfg = Number(b.getAttribute('data-cfg'));
+      escolha.area = null;
+      pintaAreas();
+      saida.hidden = true;
+      if (!reduzMovimento) passo2.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    });
+
+    optArea.addEventListener('click', function (ev) {
+      var b = ev.target.closest('button[data-area]');
+      if (!b) return;
+      optArea.querySelectorAll('button').forEach(function (x) { x.removeAttribute('aria-pressed'); });
+      b.setAttribute('aria-pressed', 'true');
+      escolha.area = b.getAttribute('data-area');
+      pintaSaida();
+      if (!reduzMovimento) {
+        setTimeout(function () { saida.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }, 60);
+      }
     });
   }
 
   /* ================================================================ *
-   * Foco por equipamento — clicar num módulo acende o mesmo
-   * equipamento em todas as configurações da página
+   * Abas de configuração (página de formato)
    * ================================================================ */
-  var cadeias = document.getElementById('cadeias');
-  var barraFoco = document.getElementById('focoBarra');
-  var CHAVES = window.AV_CHAVES || {};
+  var abas = document.querySelector('.abas');
+  if (abas) {
+    var corpos = document.querySelectorAll('.cfgs-corpo .cfg');
 
-  function limpaFoco() {
-    if (!cadeias) return;
-    cadeias.removeAttribute('data-foco');
-    cadeias.querySelectorAll('.mod[data-alvo]').forEach(function (m) { m.removeAttribute('data-alvo'); });
-    cadeias.querySelectorAll('.mod').forEach(function (m) { m.setAttribute('aria-pressed', 'false'); });
-    if (barraFoco) barraFoco.hidden = true;
-  }
-
-  function aplicaFoco(chave, nomeClicado) {
-    if (!cadeias) return;
-    var info = CHAVES[chave];
-    var achou = 0;
-
-    cadeias.querySelectorAll('.mod').forEach(function (m) {
-      var suas = (m.getAttribute('data-k') || '').split(/\s+/);
-      var bate = suas.indexOf(chave) >= 0;
-      bate ? m.setAttribute('data-alvo', '1') : m.removeAttribute('data-alvo');
-      m.setAttribute('aria-pressed', String(bate));
-      if (bate) achou++;
-    });
-
-    cadeias.setAttribute('data-foco', chave);
-
-    if (barraFoco && info) {
-      barraFoco.querySelector('.nome').textContent = info.rotulo || nomeClicado;
-      var usa = info.usa || 0, fora = info.fora || 0, total = info.total || 0;
-      var partes = ['em <b>' + usa + '</b> de <b>' + total + '</b> configurações'];
-      if (fora) partes.push('fora de <b>' + fora + '</b>');
-      barraFoco.querySelector('.conta').innerHTML = partes.join(' · ');
-      barraFoco.hidden = false;
-    }
-    aviso('Aceso em ' + achou + (achou === 1 ? ' ponto' : ' pontos') + ' desta página');
-  }
-
-  if (cadeias) {
-    cadeias.addEventListener('click', function (ev) {
-      var mod = ev.target.closest('.mod');
-      if (!mod) return;
-      var chave = (mod.getAttribute('data-k') || '').split(/\s+/)[0];
-      if (!chave) return;
-      if (cadeias.getAttribute('data-foco') === chave) { limpaFoco(); return; }
-      aplicaFoco(chave, mod.querySelector('.nome').textContent);
-    });
-
-    if (barraFoco) {
-      var btnLimpa = barraFoco.querySelector('button');
-      if (btnLimpa) btnLimpa.addEventListener('click', limpaFoco);
-    }
-
-    document.addEventListener('keydown', function (ev) {
-      if (ev.key === 'Escape' && cadeias.getAttribute('data-foco')) limpaFoco();
-    });
-  }
-
-  /* ================================================================ *
-   * Brilho que segue o ponteiro nos cards
-   * ================================================================ */
-  if (!reduzMovimento) {
-    document.querySelectorAll('.fcard').forEach(function (card) {
-      card.addEventListener('pointermove', function (ev) {
-        var r = card.getBoundingClientRect();
-        card.style.setProperty('--mx', ((ev.clientX - r.left) / r.width * 100).toFixed(1) + '%');
-        card.style.setProperty('--my', ((ev.clientY - r.top) / r.height * 100).toFixed(1) + '%');
+    function mostra(id) {
+      corpos.forEach(function (c) { c.hidden = c.id !== id; });
+      abas.querySelectorAll('button').forEach(function (b) {
+        b.setAttribute('aria-selected', String(b.getAttribute('data-aba') === id));
       });
-    });
-  }
-
-  /* ================================================================ *
-   * Cruz na matriz do comparador: acende a linha e a coluna do cursor
-   * ================================================================ */
-  var matriz = document.querySelector('.matriz');
-  if (matriz) {
-    var cabecas = matriz.querySelectorAll('thead th');
-
-    function limpaCruz() {
-      matriz.querySelectorAll('.cruz').forEach(function (e) { e.classList.remove('cruz'); });
     }
 
-    matriz.addEventListener('pointermove', function (ev) {
-      var cel = ev.target.closest('td,th');
-      if (!cel || !cel.parentElement || cel.parentElement.parentElement.tagName === 'THEAD') return;
-      limpaCruz();
-      var linha = cel.parentElement;
-      if (linha.classList.contains('grupo-linha')) return;
-      linha.querySelectorAll('td,th').forEach(function (c) { c.classList.add('cruz'); });
-      var i = Array.prototype.indexOf.call(linha.children, cel);
-      if (cabecas[i]) cabecas[i].classList.add('cruz');
+    // se a URL aponta para uma configuração, abre aquela
+    var alvo = (location.hash || '').replace('#', '');
+    mostra(/^cfg-\d+$/.test(alvo) ? alvo : 'cfg-0');
+
+    abas.addEventListener('click', function (ev) {
+      var b = ev.target.closest('button[data-aba]');
+      if (!b) return;
+      mostra(b.getAttribute('data-aba'));
     });
 
-    matriz.addEventListener('pointerleave', limpaCruz);
+    window.addEventListener('hashchange', function () {
+      var h = (location.hash || '').replace('#', '');
+      if (/^cfg-\d+$/.test(h)) mostra(h);
+    });
   }
 
   /* ================================================================ *
-   * Triagem — monta o pacote com o sintoma já descrito
+   * Triagem para a IA
    * ================================================================ */
   var triagem = document.getElementById('triagem');
   if (triagem) {
@@ -278,7 +253,7 @@
       return l.join('\n');
     };
 
-    var pacoteCompleto = function () {
+    var pacote = function () {
       return [bruto('raw-prompt'), bruto('raw-descritivo'), bruto('raw-artefato'), montaTexto()]
         .filter(Boolean).join('\n\n---\n\n');
     };
@@ -297,9 +272,7 @@
             (i.ok ? '&#10003;' : '&#9675;') + '</span><span>' + i.txt + '</span></li>';
         }).join('');
       }
-      if (contagem) {
-        contagem.textContent = pacoteCompleto().length.toLocaleString('pt-BR') + ' caracteres no pacote';
-      }
+      if (contagem) contagem.textContent = pacote().length.toLocaleString('pt-BR') + ' caracteres';
     };
 
     [selCfg, selEtapa, txtSintoma, txtTentou].forEach(function (el) {
@@ -310,20 +283,16 @@
     atualiza();
 
     if (btnPacote) {
-      btnPacote.addEventListener('click', function () {
-        entrega(btnPacote, pacoteCompleto(), 'Pacote com o seu relato');
-      });
+      btnPacote.addEventListener('click', function () { entrega(btnPacote, pacote(), 'Pacote'); });
     }
-    var btnSoRelato = document.getElementById('tCopiarRelato');
-    if (btnSoRelato) {
-      btnSoRelato.addEventListener('click', function () {
-        entrega(btnSoRelato, montaTexto(), 'Relato copiado');
-      });
+    var btnRelato = document.getElementById('tCopiarRelato');
+    if (btnRelato) {
+      btnRelato.addEventListener('click', function () { entrega(btnRelato, montaTexto(), 'Relato'); });
     }
   }
 
   /* ================================================================ *
-   * Paleta de comando (Ctrl/Cmd + K, ou "/")
+   * Busca
    * ================================================================ */
   var paleta = document.getElementById('paleta');
   var idx = window.AV_INDICE || [];
@@ -385,10 +354,7 @@
     document.querySelectorAll('[data-abre-paleta]').forEach(function (b) {
       b.addEventListener('click', abre);
     });
-
-    campo.addEventListener('input', function () {
-      atuais = busca(campo.value); sel = 0; pinta();
-    });
+    campo.addEventListener('input', function () { atuais = busca(campo.value); sel = 0; pinta(); });
     paleta.addEventListener('click', function (ev) { if (ev.target === paleta) fecha(); });
 
     document.addEventListener('keydown', function (ev) {
@@ -400,9 +366,7 @@
       }
       if (!paleta.getAttribute('data-abre')) {
         var tag = ev.target.tagName;
-        if (k === '/' && tag !== 'INPUT' && tag !== 'TEXTAREA' && tag !== 'SELECT') {
-          ev.preventDefault(); abre();
-        }
+        if (k === '/' && tag !== 'INPUT' && tag !== 'TEXTAREA' && tag !== 'SELECT') { ev.preventDefault(); abre(); }
         return;
       }
       if (k === 'escape') { ev.preventDefault(); fecha(); return; }
@@ -443,43 +407,15 @@
   window.addEventListener('hashchange', function () { revela(location.hash); });
 
   /* ================================================================ *
-   * Progresso de leitura e voltar ao topo
+   * Voltar ao topo
    * ================================================================ */
-  var barra = document.getElementById('progress');
   var aoTopo = document.getElementById('aoTopo');
-
-  function noScroll() {
-    var h = document.documentElement.scrollHeight - window.innerHeight;
-    var y = window.scrollY;
-    if (barra) barra.style.width = (h > 0 ? (y / h) * 100 : 0) + '%';
-    if (aoTopo) {
-      y > 600 ? aoTopo.setAttribute('data-show', '1') : aoTopo.removeAttribute('data-show');
-    }
-  }
-  window.addEventListener('scroll', noScroll, { passive: true });
-  window.addEventListener('resize', noScroll);
-  noScroll();
-
   if (aoTopo) {
+    window.addEventListener('scroll', function () {
+      window.scrollY > 700 ? aoTopo.setAttribute('data-show', '1') : aoTopo.removeAttribute('data-show');
+    }, { passive: true });
     aoTopo.addEventListener('click', function () {
       window.scrollTo({ top: 0, behavior: reduzMovimento ? 'auto' : 'smooth' });
     });
-  }
-
-  /* ================================================================ *
-   * Entrada em cena, escalonada
-   * ================================================================ */
-  if (!reduzMovimento && 'IntersectionObserver' in window) {
-    var obs = new IntersectionObserver(function (entradas) {
-      entradas.forEach(function (e) {
-        if (!e.isIntersecting) return;
-        e.target.querySelectorAll('[data-anima]').forEach(function (a, i) {
-          a.style.setProperty('--d', i);
-          a.classList.add('anima');
-        });
-        obs.unobserve(e.target);
-      });
-    }, { rootMargin: '-40px 0px -60px 0px' });
-    document.querySelectorAll('[data-anima-grupo]').forEach(function (g) { obs.observe(g); });
   }
 })();
