@@ -589,152 +589,33 @@ const indicePara = (base) => JSON.stringify(INDICE.map((i) => ({ ...i, h: i.h.re
 /* ==================================================================== *
  * 11. Home — a triagem rapida
  * ==================================================================== */
-const GLOSSARIO = [
-  ['ATEM Extreme ISO', 'Mesa de cortes. 8 entradas de vídeo e 2 canais de áudio independentes; grava em SSD pela própria USB-C. Está no evento presencial e no estúdio. Não está em nada que seja Zoom.'],
-  ['vMix', 'Software de produção. Recebe da ATEM por USB no estúdio, ou as câmeras direto do Zoom pelo plugin. Aplica o mockup visual, grava e transmite.'],
-  ['Vimeo', 'Veículo da transmissão ao vivo, e só dela: não aparece em aula gravada. Tem limite de lives simultâneas, e esse limite é um dos gatilhos da contingência.'],
-  ['Plataforma (LW)', 'Onde o aluno assiste. Recebe o player do Vimeo, ou o embed direto do Zoom no formato de contingência.'],
-  ['Zoom', 'Sala do professor nos formatos remotos. Nas aulas de cases, também divide os alunos em salas de grupo.'],
-];
-
 function home() {
-  const totalCfg = FORMATOS.reduce((n, f) => n + CADEIAS[f.cadeias].length, 0);
-
-  // passo 1: configuracao. Uma lista chapada das 6, agrupada por formato.
-  const opcoesCfg = FORMATOS.map((f) => {
-    const bts = CADEIAS[f.cadeias].map((c, i) =>
-      `<button type="button" class="opt" data-fmt="${f.slug}" data-cfg="${i}">${esc(c.nome)}</button>`
-    ).join('');
-    return `<div class="opt-grupo">
-            <span class="opt-grupo-rot">${esc(f.nav)}</span>
-            <div class="opt-linha">${bts}</div>
-          </div>`;
-  }).join('');
-
-  const cards = FORMATOS.map((f) => {
-    const cfgs = CADEIAS[f.cadeias];
-    const nResolvidos = (RESOLVIDOS[f.cadeias] || []).length;
-    return `        <a class="fcard" href="./${f.slug}/">
-          <span class="num">${esc(f.num)}</span>
-          <h3>${esc(f.titulo)}</h3>
-          <span class="cfgs">${cfgs.map((c) => `<span class="chip">${esc(c.nome)}</span>`).join('')}</span>
-          <p>${esc(f.resumo)}</p>
-          <span class="fcard-pe">
-            <span class="go">Abrir o manual ${IC.seta}</span>
-            <span class="fcard-res">${nResolvidos ? nResolvidos + ' caso já resolvido' : 'nenhum caso documentado'}</span>
-          </span>
-        </a>`;
-  }).join('\n');
-
-  const gloss = GLOSSARIO.map(([k, txt]) => `        <div class="gcard">
-          <span class="k">${esc(k)}</span>
-          <p>${esc(txt)}</p>
-        </div>`).join('\n');
-
-  // o caso resolvido aparece na home: e' o que mais evita retrabalho
-  const resolvidosHome = FORMATOS.flatMap((f) =>
-    (RESOLVIDOS[f.cadeias] || []).map((r) => `        <div class="res">
-          <div class="res-cab">
-            <span class="res-ic" aria-hidden="true">${IC.ok}</span>
-            <div>
-              <h3>${esc(r.titulo)}</h3>
-              <span class="res-onde">${esc(f.titulo)} · ${esc(r.fonte)}</span>
-            </div>
-          </div>
-          <dl class="res-dl">
-            <dt>Era</dt><dd>${esc(r.causa)}</dd>
-            <dt>Resolveu</dt><dd>${esc(r.solucao)}</dd>
-            <dt>Estado</dt><dd>${esc(r.estado)}</dd>
-          </dl>
-        </div>`)).join('\n');
-
-  const corpo = `<main>
-  <div class="hero hero-curto">
-    <div class="wrap">
-      <span class="eyebrow">Manual de suporte · audiovisual</span>
-      <h1>Deu problema<br><span class="dim">na aula?</span></h1>
-      <p class="lead">Responda duas ou três perguntas e o guia leva até o ponto provável, percorrendo a cadeia <b>um equipamento por vez</b>. Ele também diz <b>o que não está em jogo</b> naquele formato — que é o que mais economiza tempo.</p>
+  const corpo = `<main class="palco">
+  <div class="wrap-estreito">
+    <div class="palco-cab">
+      <h1>Deu problema? <span class="dim">Vamos achar.</span></h1>
+      <p class="palco-sub">Três perguntas, no máximo. O guia usa só o que está nos documentos do time — sem IA.</p>
     </div>
+
+    <div class="guia">
+      <div class="guia-topo">
+        <div class="guia-trilha" id="guiaTrilha" aria-live="polite"></div>
+        <button class="guia-voltar" id="guiaVoltar" type="button" hidden>Voltar</button>
+      </div>
+      <div class="guia-palco" id="guiaPalco"></div>
+      <noscript><p class="cartao-ajuda" style="padding:22px">O guia precisa de JavaScript. Sem ele, abra o manual de um formato nos links abaixo.</p></noscript>
+    </div>
+
+    <p class="palco-pe">
+      Manual completo:
+      ${FORMATOS.map((f) => `<a href="./${f.slug}/">${esc(f.nav)}</a>`).join('<span aria-hidden="true">·</span>')}
+    </p>
   </div>
-
-  <section id="guia">
-    <div class="wrap">
-      <div class="bot" id="bot">
-        <div class="bot-cab">
-          <span class="bot-av" aria-hidden="true"></span>
-          <div class="bot-quem">
-            <b>Guia de diagnóstico</b>
-            <small>Sem IA. Só o que está nos documentos do time.</small>
-          </div>
-          <button class="bot-reset" type="button" id="botReset" hidden>Começar de novo</button>
-        </div>
-        <div class="bot-fluxo" id="botFluxo" aria-live="polite"></div>
-      </div>
-      <noscript>
-        <p class="sec-sub" style="margin-top:16px">O guia precisa de JavaScript. Sem ele, abra o formato direto na lista abaixo — a cadeia completa está lá.</p>
-      </noscript>
-    </div>
-  </section>
-
-  ${resolvidosHome ? `<section id="resolvidos">
-    <div class="wrap">
-      <div class="sec-head">
-        <h2>Já resolvido — não reabrir</h2>
-        <span class="rule"></span>
-      </div>
-      <p class="sec-sub">O que já foi diagnosticado e encerrado. Se o sintoma bater com um destes, a causa já é conhecida.</p>
-${resolvidosHome}
-      <p class="vazio-nota">${IC.aviso} Aulas ao vivo e aulas gravadas ainda não têm nenhum caso documentado. Cada diagnóstico que o time fechar deve entrar no artefato do formato, para não ser reinvestigado.</p>
-    </div>
-  </section>` : ''}
-
-  <section>
-    <div class="wrap">
-      <div class="sec-head">
-        <h2>Os ${FORMATOS.length} formatos</h2>
-        <span class="rule"></span>
-        <span class="count">${totalCfg} configurações</span>
-      </div>
-      <div class="grid-formats">
-${cards}
-      </div>
-    </div>
-  </section>
-
-  <section>
-    <div class="wrap">
-      <div class="sec-head">
-        <h2>O que é cada equipamento</h2>
-        <span class="rule"></span>
-      </div>
-      <p class="sec-sub">Para quem apresenta e não opera: o que cada peça faz, e em que formato ela aparece.</p>
-      <div class="grid-gloss">
-${gloss}
-      </div>
-    </div>
-  </section>
-
-  <section id="prompt">
-    <div class="wrap">
-      <div class="sec-head">
-        <h2>Se não estiver aqui</h2>
-        <span class="rule"></span>
-      </div>
-      <div class="ia">
-        <div>
-          <p>Sintoma novo, que o manual não cobre? Aí vale levar para uma IA. Dentro de cada formato há um botão que monta o pacote — prompt, descritivo, artefato e o seu relato — na ordem que a IA espera.</p>
-          <p class="ia-nota">Quando o diagnóstico fechar, escreva o resultado no artefato do formato. É assim que o manual para de mandar gente para a IA.</p>
-        </div>
-        <button class="btn btn-outline" data-copiar="raw-prompt" data-ok="Prompt copiado" type="button">${IC.copia} <span class="rotulo">Copiar só o prompt</span></button>
-      </div>
-    </div>
-  </section>
-</main>
-${bruto('raw-prompt', PROMPT_CHAT)}`;
+</main>`;
 
   return pagina({
     titulo: 'Manual de AV · Agroadvance',
-    desc: 'Manual de consulta durante eventos e aulas: quem está na cadeia de sinal de cada formato, o que não está em jogo, e o que já foi resolvido.',
+    desc: 'Guia de diagnóstico para eventos e aulas: três perguntas até o ponto provável, com o que está nos documentos do time.',
     atual: null,
     corpo,
     base: './',
@@ -815,7 +696,7 @@ ${resolvidos.length ? resolvidos.map((r) => `      <div class="res">
   </section>`;
 
   return `<main>
-  <div class="hero hero-curto">
+  <div class="hero-curto">
     <div class="wrap">
       <span class="eyebrow">Formato ${esc(f.num)} · ${cfgs.length} ${cfgs.length > 1 ? 'configurações' : 'configuração'}</span>
       <h1>${esc(f.titulo)}</h1>

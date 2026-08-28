@@ -82,347 +82,378 @@
   });
 
   /* ================================================================ *
-   * GUIA DE DIAGNÓSTICO — árvore de decisão, sem IA.
-   * Percorre a cadeia de sinal um equipamento por vez, que é como se
-   * isola problema de AV. Tudo o que ele afirma sai dos documentos.
+   * GUIA — uma pergunta por vez. A trilha no topo carrega o histórico,
+   * então a tela nunca acumula. Árvore de decisão, sem IA.
    * ================================================================ */
   var MANUAL = window.AV_MANUAL || null;
   var AREAS = window.AV_AREAS || {};
   var BOT = window.AV_BOT || null;
-  var fluxo = document.getElementById('botFluxo');
+  var palco = document.getElementById('guiaPalco');
 
-  if (MANUAL && BOT && fluxo) {
-    var btnReset = document.getElementById('botReset');
-    var st = null;
+  if (MANUAL && BOT && palco) {
+    var trilhaEl = document.getElementById('guiaTrilha');
+    var btnVoltar = document.getElementById('guiaVoltar');
+    var st, pilha;
 
+    /* ---------------- estado ---------------- */
     function zera() {
-      st = { fmt: null, cfg: null, area: null, i: 0, caminho: [], atalhoFeito: false };
-      fluxo.innerHTML = '';
-      if (btnReset) btnReset.hidden = true;
-      perguntaCfg();
+      st = { fmt: null, cfg: null, area: null, i: 0, verificado: [], atalhoDe: null };
+      pilha = [];
+      render();
     }
 
-    /* ---------- montagem das mensagens ---------- */
-    function bolha(html, classe) {
-      var d = document.createElement('div');
-      d.className = 'msg ' + (classe || 'msg-bot');
-      d.innerHTML = html;
-      fluxo.appendChild(d);
-      return d;
+    function guarda() {
+      pilha.push(JSON.parse(JSON.stringify(st)));
     }
 
-    function eu(texto) {
-      bolha('<span class="msg-corpo">' + texto + '</span>', 'msg-eu');
+    function voltar() {
+      if (!pilha.length) return;
+      st = pilha.pop();
+      render();
     }
 
-    // desativa os botões da rodada anterior: o histórico não deve ser clicável
-    function congela() {
-      fluxo.querySelectorAll('.opts').forEach(function (o) {
-        if (o.dataset.viva === '1') {
-          o.dataset.viva = '0';
-          o.querySelectorAll('button').forEach(function (b) { b.disabled = true; });
-        }
-      });
-    }
-
-    function opcoes(itens) {
-      var box = document.createElement('div');
-      box.className = 'opts';
-      box.dataset.viva = '1';
-      itens.forEach(function (it) {
-        if (it.grupo) {
-          var g = document.createElement('span');
-          g.className = 'opts-grupo';
-          g.textContent = it.grupo;
-          box.appendChild(g);
-          return;
-        }
-        var b = document.createElement('button');
-        b.type = 'button';
-        b.className = 'opt-bot' + (it.tom ? ' tom-' + it.tom : '');
-        b.innerHTML = it.sub
-          ? '<b>' + it.rotulo + '</b><small>' + it.sub + '</small>'
-          : it.rotulo;
-        b.addEventListener('click', function () {
-          congela();
-          eu(it.eco || it.rotulo);
-          it.acao();
-          desce();
-        });
-        box.appendChild(b);
-      });
-      fluxo.appendChild(box);
-      desce();
-      return box;
-    }
-
-    function desce() {
-      if (reduzMovimento) return;
-      var ultimo = fluxo.lastElementChild;
-      if (ultimo) ultimo.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-    }
-
-    function achaCfg() {
+    function cfgAtual() {
       var f = MANUAL.filter(function (x) { return x.slug === st.fmt; })[0];
       return f ? { formato: f, cfg: f.cfgs[st.cfg] } : null;
     }
 
-    /* ---------- 1. configuração ---------- */
-    function perguntaCfg() {
-      bolha('<span class="msg-corpo">Vamos achar o ponto. <b>Em que configuração a aula ou o evento está rodando?</b></span>');
-      var itens = [];
-      MANUAL.forEach(function (f) {
-        itens.push({ grupo: f.nav });
-        f.cfgs.forEach(function (c, i) {
-          itens.push({
-            rotulo: c.nome,
-            acao: function () {
-              st.fmt = f.slug; st.cfg = i;
-              if (btnReset) btnReset.hidden = false;
-              perguntaArea();
-            },
-          });
-        });
-      });
-      opcoes(itens);
-    }
-
-    /* ---------- 2. área do sintoma ---------- */
-    function perguntaArea() {
-      var c = achaCfg();
-      bolha('<span class="msg-corpo"><b>Onde está o problema?</b> Escolha pelo que a pessoa está sentindo, não pelo equipamento.</span>');
-      var vistas = [];
-      c.cfg.etapas.forEach(function (e) { if (vistas.indexOf(e.area) < 0) vistas.push(e.area); });
-      opcoes(vistas.map(function (a) {
-        var meta = AREAS[a] || { rotulo: a, desc: '' };
-        return {
-          rotulo: meta.rotulo, sub: meta.desc, eco: meta.rotulo,
-          acao: function () { st.area = a; st.i = 0; st.caminho = []; atalhoOuCadeia(); },
-        };
-      }));
-    }
-
-    /* ---------- 3. atalho documentado, se houver ---------- */
-    function atalhoOuCadeia() {
-      var at = BOT.atalhos.filter(function (a) {
-        if (a.fmt !== st.fmt || a.area !== st.area) return false;
-        // o atalho vale só nas configurações que ele declara
-        return !a.cfgs || a.cfgs.indexOf(st.cfg) >= 0;
-      })[0];
-
-      if (at && st.atalhoFeito !== st.area) {
-        st.atalhoFeito = st.area;
-        bolha('<span class="msg-corpo">' + at.pergunta + '</span>');
-        opcoes([
-          {
-            rotulo: 'Sim', tom: 'sim', eco: 'Sim',
-            acao: function () {
-              if (at.simTipo === 'resolvido') mostraResolvido(at.simRef);
-              else if (at.simTipo === 'gatilhos') mostraGatilhos();
-            },
-          },
-          {
-            rotulo: 'Não', tom: 'nao', eco: 'Não',
-            acao: function () {
-              if (at.naoNota) bolha('<span class="msg-corpo">' + at.naoNota + '</span>');
-              andaCadeia();
-            },
-          },
-        ]);
-        return;
-      }
-      andaCadeia();
-    }
-
-    /* ---------- suspeitos da área, na ordem do sinal ---------- */
-    function suspeitosDaArea() {
-      var c = achaCfg();
-      var lista = [];
+    /* ---------------- dados da cadeia ---------------- */
+    function pontos() {
+      var c = cfgAtual();
+      var l = [];
       c.cfg.etapas.filter(function (e) { return e.area === st.area; }).forEach(function (e) {
-        e.mods.forEach(function (m) {
-          if (m.estado !== 'off') lista.push({ etapa: e.rotulo, mod: m });
-        });
+        e.mods.forEach(function (m) { if (m.estado !== 'off') l.push({ etapa: e.rotulo, mod: m }); });
       });
-      return lista;
+      return l;
     }
 
-    function foraDaArea() {
-      var c = achaCfg();
+    function foraDaConfig() {
+      var c = cfgAtual();
       var f = [];
-      c.cfg.etapas.filter(function (e) { return e.area === st.area; }).forEach(function (e) {
-        e.mods.forEach(function (m) { if (m.estado === 'off') f.push(m.nome); });
+      c.cfg.etapas.forEach(function (e) {
+        e.mods.forEach(function (m) { if (m.estado === 'off' && f.indexOf(m.nome) < 0) f.push(m.nome); });
       });
       return f;
     }
 
-    /* ---------- 4. caminhada pela cadeia ---------- */
-    function andaCadeia() {
-      var lista = suspeitosDaArea();
-      var fora = foraDaArea();
-
-      if (!lista.length) {
-        var meta = AREAS[st.area] || { rotulo: st.area };
-        bolha('<span class="msg-corpo"><b>Nesta configuração não existe essa etapa.</b> ' +
-          'Não há o que investigar em ' + meta.rotulo.toLowerCase() + ' aqui' +
-          (fora.length ? ' — e o que apareceria (' + fora.join(', ') + ') está fora do formato' : '') +
-          '. Se o sintoma é real, ele está em outra área.</span>', 'msg-bot msg-beco');
-        ofereceOutraArea();
-        return;
-      }
-
-      if (st.i === 0 && fora.length) {
-        bolha('<span class="msg-corpo">Antes: nesta área <b>não investigue</b> ' + fora.join(', ') +
-          ' — não entra nesta configuração.</span>', 'msg-bot msg-nota');
-      }
-
-      if (st.i >= lista.length) { fimDaCadeia(); return; }
-
-      var passo = lista[st.i];
-      bolha('<span class="msg-corpo"><span class="passo-de">Ponto ' + (st.i + 1) + ' de ' + lista.length +
-        ' · ' + passo.etapa + '</span><b>' + passo.mod.nome + '</b>' +
-        (passo.mod.papel ? '<span class="passo-papel">' + passo.mod.papel + '</span>' : '') +
-        '<span class="passo-q">Este ponto está respondendo?</span></span>');
-
-      opcoes([
-        {
-          rotulo: 'Está OK', tom: 'sim', eco: passo.mod.nome + ': OK',
-          acao: function () {
-            st.caminho.push({ nome: passo.mod.nome, r: 'ok' });
-            st.i++;
-            andaCadeia();
-          },
-        },
-        {
-          rotulo: 'O problema é aqui', tom: 'nao', eco: 'O problema é no ' + passo.mod.nome,
-          acao: function () {
-            st.caminho.push({ nome: passo.mod.nome, r: 'falhou' });
-            achou(passo);
-          },
-        },
-        {
-          rotulo: 'Não sei verificar', tom: 'neutro', eco: 'Não sei verificar',
-          acao: function () {
-            st.caminho.push({ nome: passo.mod.nome, r: 'nao verificado' });
-            var c = achaCfg();
-            bolha('<span class="msg-corpo">O documento diz sobre ele: <b>' +
-              (passo.mod.papel || 'nada além do nome') + '</b>. ' +
-              'O descritivo do formato tem o contexto completo — está no fim da página do formato. Sigo para o próximo ponto.</span>',
-              'msg-bot msg-nota');
-            st.i++;
-            andaCadeia();
-          },
-        },
-      ]);
+    function atalhoDaVez() {
+      return BOT.atalhos.filter(function (a) {
+        if (a.fmt !== st.fmt || a.area !== st.area) return false;
+        return !a.cfgs || a.cfgs.indexOf(st.cfg) >= 0;
+      })[0];
     }
 
-    /* ---------- 5. achou o ponto ---------- */
-    function achou(passo) {
-      var c = achaCfg();
-      var resolvidos = BOT.resolvidos[st.fmt] || [];
-      // cruza pela chave que o proprio caso declara: nada de adivinhar por
-      // semelhanca de nome, que faria o guia afirmar errado
-      var minhas = passo.mod.k || [];
-      var caso = resolvidos.filter(function (r) {
-        return (r.chaves || []).some(function (k) { return minhas.indexOf(k) >= 0; });
+    /* ---------------- trilha ---------------- */
+    function pintaTrilha() {
+      var partes = [];
+      if (st.fmt !== null) {
+        var c = cfgAtual();
+        partes.push({ txt: c.cfg.nome, ate: 1 });
+      }
+      if (st.area) {
+        partes.push({ txt: (AREAS[st.area] || {}).rotulo || st.area, ate: 2 });
+      }
+      trilhaEl.innerHTML = partes.length
+        ? partes.map(function (p, i) {
+            return (i ? '<span class="tri-sep" aria-hidden="true">/</span>' : '') +
+              '<span class="tri-item">' + p.txt + '</span>';
+          }).join('')
+        : '<span class="tri-item tri-vazio">Começo</span>';
+      btnVoltar.hidden = pilha.length === 0;
+    }
+
+    /* ---------------- render ---------------- */
+    function render() {
+      pintaTrilha();
+
+      if (st.fmt === null) return telaConfig();
+      if (!st.area) return telaArea();
+
+      var at = atalhoDaVez();
+      if (at && st.atalhoDe !== st.area) return telaAtalho(at);
+
+      var lista = pontos();
+      if (!lista.length) return telaSemEtapa();
+      if (st.i >= lista.length) return telaCadeiaLimpa();
+      return telaPonto(lista);
+    }
+
+    function troca(html) {
+      palco.innerHTML = html;
+      palco.querySelectorAll('[data-vai]').forEach(function (b) {
+        b.addEventListener('click', function () {
+          var fn = acoes[b.getAttribute('data-vai')];
+          if (fn) fn(b);
+        });
+      });
+      if (!reduzMovimento) {
+        var alvo = palco.querySelector('.cartao');
+        if (alvo) alvo.animate(
+          [{ opacity: 0, transform: 'translateY(6px)' }, { opacity: 1, transform: 'none' }],
+          { duration: 260, easing: 'cubic-bezier(.22,.9,.24,1)' }
+        );
+      }
+    }
+
+    var acoes = {};
+
+    /* ---------------- 1. configuração ---------------- */
+    function telaConfig() {
+      var grupos = MANUAL.map(function (f, fi) {
+        return '<div class="grupo">' +
+          '<span class="grupo-rot">' + f.nav + '</span>' +
+          '<div class="escolhas">' + f.cfgs.map(function (c, ci) {
+            return '<button class="escolha" type="button" data-vai="cfg" data-f="' + fi + '" data-c="' + ci + '">' +
+              c.nome + '</button>';
+          }).join('') + '</div></div>';
+      }).join('');
+
+      troca('<div class="cartao">' +
+        '<span class="cartao-eyebrow">Passo 1 de 3</span>' +
+        '<h2 class="cartao-titulo">Em que configuração você está?</h2>' +
+        '<div class="grupos">' + grupos + '</div>' +
+        '</div>');
+    }
+
+    acoes.cfg = function (b) {
+      guarda();
+      st.fmt = MANUAL[Number(b.getAttribute('data-f'))].slug;
+      st.cfg = Number(b.getAttribute('data-c'));
+      st.area = null; st.i = 0; st.verificado = []; st.atalhoDe = null;
+      render();
+    };
+
+    /* ---------------- 2. área ---------------- */
+    function telaArea() {
+      var c = cfgAtual();
+      var vistas = [];
+      c.cfg.etapas.forEach(function (e) { if (vistas.indexOf(e.area) < 0) vistas.push(e.area); });
+
+      var opts = vistas.map(function (a) {
+        var m = AREAS[a] || { rotulo: a, desc: '' };
+        return '<button class="escolha escolha-area" type="button" data-vai="area" data-a="' + a + '">' +
+          '<b>' + m.rotulo + '</b><small>' + m.desc + '</small></button>';
+      }).join('');
+
+      troca('<div class="cartao">' +
+        '<span class="cartao-eyebrow">Passo 2 de 3</span>' +
+        '<h2 class="cartao-titulo">Onde está o problema?</h2>' +
+        '<p class="cartao-ajuda">Escolha pelo que a pessoa está sentindo, não pelo equipamento.</p>' +
+        '<div class="escolhas escolhas-grade">' + opts + '</div>' +
+        '</div>');
+    }
+
+    acoes.area = function (b) {
+      guarda();
+      st.area = b.getAttribute('data-a');
+      st.i = 0; st.verificado = [];
+      render();
+    };
+
+    /* ---------------- 3. atalho documentado ---------------- */
+    function telaAtalho(at) {
+      troca('<div class="cartao">' +
+        '<span class="cartao-eyebrow">Passo 3 de 3</span>' +
+        '<h2 class="cartao-titulo">' + at.pergunta + '</h2>' +
+        '<div class="escolhas">' +
+          '<button class="escolha escolha-sim" type="button" data-vai="atalhoSim">Sim</button>' +
+          '<button class="escolha" type="button" data-vai="atalhoNao">Não</button>' +
+        '</div></div>');
+    }
+
+    acoes.atalhoSim = function () {
+      var at = atalhoDaVez();
+      guarda();
+      st.atalhoDe = st.area;
+      if (at.simTipo === 'resolvido') telaResolvido(at.simRef || 0);
+      else telaGatilhos();
+    };
+
+    acoes.atalhoNao = function () {
+      guarda();
+      st.atalhoDe = st.area;
+      render();
+    };
+
+    /* ---------------- caminhada pela cadeia ---------------- */
+    function telaPonto(lista) {
+      var p = lista[st.i];
+      var fora = foraDaConfig();
+      var jaVi = st.verificado.length
+        ? '<div class="checados">' + st.verificado.map(function (v) {
+            return '<span class="checado c-' + v.r + '">' + v.nome + '</span>';
+          }).join('') + '</div>'
+        : '';
+
+      troca('<div class="cartao">' +
+        '<span class="cartao-eyebrow">Ponto ' + (st.i + 1) + ' de ' + lista.length + ' · ' + p.etapa + '</span>' +
+        '<h2 class="cartao-titulo">' + p.mod.nome + '</h2>' +
+        (p.mod.papel ? '<p class="cartao-ajuda">' + p.mod.papel + '</p>' : '') +
+        '<p class="cartao-q">Este ponto está respondendo?</p>' +
+        '<div class="escolhas">' +
+          '<button class="escolha escolha-sim" type="button" data-vai="ok">Está OK</button>' +
+          '<button class="escolha escolha-nao" type="button" data-vai="aqui">O problema é aqui</button>' +
+          '<button class="escolha escolha-fraca" type="button" data-vai="naosei">Não sei verificar</button>' +
+        '</div>' +
+        jaVi +
+        (st.i === 0 && fora.length
+          ? '<p class="cartao-fora"><b>Nem investigue:</b> ' + fora.join(', ') + ' — não entra nesta configuração.</p>'
+          : '') +
+        '</div>');
+    }
+
+    acoes.ok = function () {
+      var p = pontos()[st.i];
+      guarda();
+      st.verificado.push({ nome: p.mod.nome, r: 'ok' });
+      st.i++;
+      render();
+    };
+
+    acoes.naosei = function () {
+      var p = pontos()[st.i];
+      guarda();
+      st.verificado.push({ nome: p.mod.nome, r: 'pulou' });
+      st.i++;
+      render();
+    };
+
+    acoes.aqui = function () {
+      var p = pontos()[st.i];
+      guarda();
+      st.verificado.push({ nome: p.mod.nome, r: 'falhou' });
+      telaAchou(p);
+    };
+
+    /* ---------------- saídas ---------------- */
+    function rodape(extra) {
+      var c = cfgAtual();
+      return '<div class="cartao-pe">' +
+        '<a class="btn btn-primary" href="./' + c.cfg.ancora + '">Abrir o manual</a>' +
+        '<button class="btn btn-outline" type="button" data-vai="paraIA">Levar para a IA</button>' +
+        (extra || '') +
+        '<button class="btn btn-ghost" type="button" data-vai="reiniciar">Começar de novo</button>' +
+        '</div>';
+    }
+
+    function checados() {
+      if (!st.verificado.length) return '';
+      return '<div class="checados">' + st.verificado.map(function (v) {
+        return '<span class="checado c-' + v.r + '">' + v.nome + '</span>';
+      }).join('') + '</div>';
+    }
+
+    function telaAchou(p) {
+      var caso = (BOT.resolvidos[st.fmt] || []).filter(function (r) {
+        return (r.chaves || []).some(function (k) { return (p.mod.k || []).indexOf(k) >= 0; });
       })[0];
 
-      var html = '<span class="msg-corpo"><span class="passo-de">Ponto provável</span><b>' +
-        passo.mod.nome + '</b>' +
-        (passo.mod.papel ? '<span class="passo-papel">' + passo.mod.papel + '</span>' : '') +
-        '<span class="achou-nota">O manual chega até aqui: ele descreve o que este ponto faz, ' +
-        'mas <b>não traz procedimento de conserto</b> — isso não está nos documentos do time.</span></span>';
-      bolha(html, 'msg-bot msg-achou');
-
-      if (caso) {
-        bolha('<span class="msg-corpo"><b>Existe um caso encerrado sobre este ponto:</b> ' + caso.titulo +
-          '. Resolveu: ' + caso.solucao + '</span>', 'msg-bot msg-nota');
-      }
-
-      fim();
+      troca('<div class="cartao cartao-ok">' +
+        '<span class="cartao-eyebrow">Ponto provável</span>' +
+        '<h2 class="cartao-titulo">' + p.mod.nome + '</h2>' +
+        (p.mod.papel ? '<p class="cartao-ajuda">' + p.mod.papel + '</p>' : '') +
+        (caso
+          ? '<div class="caso"><span class="caso-rot">Caso já encerrado sobre este ponto</span>' +
+            '<b>' + caso.titulo + '</b><p>' + caso.solucao + '</p></div>'
+          : '<p class="cartao-nota">O manual descreve o que este ponto faz, mas não traz o conserto — ' +
+            'isso não está nos documentos do time.</p>') +
+        checados() +
+        rodape() +
+        '</div>');
     }
 
-    /* ---------- 6. cadeia inteira OK ---------- */
-    function fimDaCadeia() {
-      bolha('<span class="msg-corpo"><b>Todos os pontos desta área respondem.</b> ' +
-        'Então o sintoma não está nesta parte da cadeia. Vale checar outra área — ou levar o caso para a IA, ' +
-        'já com o caminho que você percorreu.</span>', 'msg-bot msg-beco');
-      ofereceOutraArea();
+    function telaResolvido(ref) {
+      var r = (BOT.resolvidos[st.fmt] || [])[ref];
+      if (!r) { st.atalhoDe = st.area; render(); return; }
+      st.verificado = [{ nome: 'sintoma bate com caso encerrado', r: 'ok' }];
+
+      troca('<div class="cartao cartao-ok">' +
+        '<span class="cartao-eyebrow">Já resolvido antes</span>' +
+        '<h2 class="cartao-titulo">' + r.titulo + '</h2>' +
+        '<div class="caso"><span class="caso-rot">Resolveu</span><p>' + r.solucao + '</p></div>' +
+        '<p class="cartao-nota">' + r.estado + '</p>' +
+        rodape() +
+        '</div>');
     }
 
-    function ofereceOutraArea() {
-      opcoes([
-        { rotulo: 'Checar outra área', tom: 'neutro', eco: 'Checar outra área',
-          acao: function () { st.i = 0; st.caminho = []; perguntaArea(); } },
-        { rotulo: 'Levar para a IA', tom: 'sim', eco: 'Levar para a IA',
-          acao: function () { paraIA(); } },
-      ]);
-    }
-
-    /* ---------- saídas ---------- */
-    function mostraResolvido(ref) {
-      var r = (BOT.resolvidos[st.fmt] || [])[ref || 0];
-      if (!r) { andaCadeia(); return; }
-      bolha('<span class="msg-corpo"><span class="passo-de">Caso já encerrado</span><b>' + r.titulo + '</b>' +
-        '<span class="passo-papel"><b>Era:</b> ' + r.causa + '</span>' +
-        '<span class="passo-papel"><b>Resolveu:</b> ' + r.solucao + '</span>' +
-        '<span class="achou-nota">' + r.estado + '</span></span>', 'msg-bot msg-achou');
-      st.caminho.push({ nome: r.titulo, r: 'caso encerrado, confere com o sintoma' });
-      fim();
-    }
-
-    function mostraGatilhos() {
+    function telaGatilhos() {
       var g = BOT.gatilhos[st.fmt];
-      if (!g) { andaCadeia(); return; }
-      bolha('<span class="msg-corpo"><span class="passo-de">' + g.titulo + '</span>' +
-        g.intro + '<ul class="msg-ul"><li>' + g.itens.join('</li><li>') + '</li></ul>' +
-        '<span class="achou-nota">' + g.nota + '</span></span>', 'msg-bot msg-achou');
-      bolha('<span class="msg-corpo">Se nenhum desses três bate com o que está acontecendo, o problema é outro — vamos percorrer a cadeia.</span>', 'msg-bot msg-nota');
-      opcoes([
-        { rotulo: 'Bate com um deles', tom: 'sim', eco: 'Bate com um deles',
-          acao: function () {
-            st.caminho.push({ nome: 'gatilho de contingência', r: 'confere' });
-            bolha('<span class="msg-corpo">Então o caminho documentado é <b>cair para Somente Zoom</b>: ' +
-              'o aluno passa a receber o embed do Zoom direto na plataforma, sem vMix e sem Vimeo.</span>', 'msg-bot msg-achou');
-            fim();
-          } },
-        { rotulo: 'Não bate', tom: 'nao', eco: 'Não bate',
-          acao: function () { andaCadeia(); } },
-      ]);
+      if (!g) { st.atalhoDe = st.area; render(); return; }
+
+      troca('<div class="cartao cartao-aviso">' +
+        '<span class="cartao-eyebrow">' + g.titulo + '</span>' +
+        '<h2 class="cartao-titulo">Algum destes três está acontecendo?</h2>' +
+        '<ul class="lista-check">' + g.itens.map(function (x) { return '<li>' + x + '</li>'; }).join('') + '</ul>' +
+        '<div class="escolhas">' +
+          '<button class="escolha escolha-sim" type="button" data-vai="gatilhoSim">Sim, um deles</button>' +
+          '<button class="escolha" type="button" data-vai="gatilhoNao">Nenhum</button>' +
+        '</div></div>');
     }
 
-    function textoCaminho() {
-      var c = achaCfg();
-      var meta = AREAS[st.area] || { rotulo: st.area };
-      var l = ['Percorri o guia do manual:'];
-      l.push('- Configuração: ' + c.cfg.nome);
-      l.push('- Área: ' + meta.rotulo);
-      st.caminho.forEach(function (x) { l.push('- ' + x.nome + ': ' + x.r); });
-      return l.join('\n');
+    acoes.gatilhoSim = function () {
+      guarda();
+      st.verificado = [{ nome: 'gatilho de contingência', r: 'falhou' }];
+      troca('<div class="cartao cartao-ok">' +
+        '<span class="cartao-eyebrow">O que fazer</span>' +
+        '<h2 class="cartao-titulo">Cair para Somente Zoom</h2>' +
+        '<p class="cartao-ajuda">O aluno passa a receber o embed do Zoom direto na plataforma, sem vMix e sem Vimeo. ' +
+        'É o caminho documentado para os três gatilhos.</p>' +
+        rodape() +
+        '</div>');
+    };
+
+    acoes.gatilhoNao = function () {
+      guarda();
+      st.atalhoDe = st.area;
+      render();
+    };
+
+    function telaSemEtapa() {
+      var fora = foraDaConfig();
+      var m = AREAS[st.area] || { rotulo: st.area };
+      troca('<div class="cartao cartao-aviso">' +
+        '<span class="cartao-eyebrow">Nada a investigar aqui</span>' +
+        '<h2 class="cartao-titulo">' + m.rotulo + ' não existe nesta configuração</h2>' +
+        '<p class="cartao-ajuda">' +
+        (fora.length ? 'O que apareceria — ' + fora.join(', ') + ' — está fora deste formato. ' : '') +
+        'Se o sintoma é real, ele está em outra área.</p>' +
+        '<div class="escolhas"><button class="escolha escolha-sim" type="button" data-vai="outraArea">Escolher outra área</button></div>' +
+        rodape() +
+        '</div>');
     }
 
-    function fim() {
-      var c = achaCfg();
-      opcoes([
-        { rotulo: 'Abrir o manual do formato', tom: 'neutro', eco: 'Abrir o manual do formato',
-          acao: function () { window.location.href = './' + c.cfg.ancora; } },
-        { rotulo: 'Levar para a IA com este caminho', tom: 'sim', eco: 'Levar para a IA',
-          acao: function () { paraIA(); } },
-        { rotulo: 'Começar de novo', tom: 'neutro', eco: 'Começar de novo', acao: zera },
-      ]);
+    function telaCadeiaLimpa() {
+      troca('<div class="cartao cartao-aviso">' +
+        '<span class="cartao-eyebrow">Cadeia percorrida</span>' +
+        '<h2 class="cartao-titulo">Todos os pontos desta área respondem</h2>' +
+        '<p class="cartao-ajuda">Então o sintoma não está nesta parte da cadeia.</p>' +
+        checados() +
+        '<div class="escolhas"><button class="escolha escolha-sim" type="button" data-vai="outraArea">Checar outra área</button></div>' +
+        rodape() +
+        '</div>');
     }
 
-    // entrega o caminho na URL: sobrevive a qualquer navegação e dá para
-    // colar num chamado, diferente de sessionStorage
-    function paraIA() {
-      var c = achaCfg();
-      var meta = AREAS[st.area] || { rotulo: st.area };
-      var q = 'cfg=' + encodeURIComponent(c.cfg.nome) +
-              '&area=' + encodeURIComponent(meta.rotulo) +
-              '&trilha=' + encodeURIComponent(textoCaminho());
-      window.location.href = './' + c.formato.slug + '/?' + q + '#ia';
-    }
+    acoes.outraArea = function () {
+      guarda();
+      st.area = null; st.i = 0; st.verificado = []; st.atalhoDe = null;
+      render();
+    };
 
-    if (btnReset) btnReset.addEventListener('click', zera);
+    acoes.reiniciar = zera;
+
+    // o caminho percorrido vai na URL: sobrevive à navegação e dá para colar
+    acoes.paraIA = function () {
+      var c = cfgAtual();
+      var m = AREAS[st.area] || { rotulo: st.area };
+      var l = ['Percorri o guia do manual:', '- Configuração: ' + c.cfg.nome, '- Área: ' + m.rotulo];
+      st.verificado.forEach(function (v) {
+        l.push('- ' + v.nome + ': ' + (v.r === 'ok' ? 'ok' : v.r === 'falhou' ? 'é aqui' : 'não verificado'));
+      });
+      window.location.href = './' + c.formato.slug + '/?cfg=' + encodeURIComponent(c.cfg.nome) +
+        '&area=' + encodeURIComponent(m.rotulo) + '&trilha=' + encodeURIComponent(l.join('\n')) + '#ia';
+    };
+
+    btnVoltar.addEventListener('click', voltar);
     zera();
   }
 
