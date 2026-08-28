@@ -3,6 +3,7 @@
 import { readFileSync, writeFileSync, mkdirSync, copyFileSync, rmSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createHash } from 'node:crypto';
 
 const RAIZ = dirname(fileURLToPath(import.meta.url));
 const CONT = join(RAIZ, 'conteudo');
@@ -373,6 +374,14 @@ const leia = (p) => readFileSync(join(CONT, p), 'utf8').replace(/\r\n/g, '\n').t
 const PROMPT = leia('prompt-introdutorio.md');
 const PROMPT_CHAT = PROMPT.split(/\n---\n/).slice(1).join('\n---\n').trim() || PROMPT;
 
+// O Pages serve os assets com max-age=600. Sem versao no endereco, depois de
+// um push o time pode ficar minutos com o manual velho em cache — e' o tipo de
+// coisa que faz parecer que a correcao nao subiu.
+const versao = (arquivo) =>
+  createHash('sha1').update(readFileSync(join(RAIZ, 'assets', arquivo))).digest('hex').slice(0, 8);
+const V_CSS = versao('site.css');
+const V_JS = versao('site.js');
+
 const bruto = (id, texto) =>
   `<script type="text/plain" id="${id}">${String(texto).replace(/<\/script/gi, '<\\/script')}</script>`;
 
@@ -521,7 +530,7 @@ function pagina({ titulo, desc, atual, corpo, base, indiceJson, manualJson }) {
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Familjen+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400;500&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="${base}assets/site.css">
+<link rel="stylesheet" href="${base}assets/site.css?v=${V_CSS}">
 <script>/* evita piscar o tema errado antes do JS principal */(function(){try{var t=localStorage.getItem('av-tema');if(!t)t=matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';document.documentElement.setAttribute('data-theme',t)}catch(e){}})();</script>
 
 <header class="top">
@@ -571,7 +580,7 @@ ${corpo}
 <button id="aoTopo" type="button" aria-label="Voltar ao topo">${IC.topo}</button>
 
 <script>window.AV_INDICE=${indiceJson};${manualJson ? `window.AV_MANUAL=${manualJson};window.AV_AREAS=${JSON.stringify(AREAS)};window.AV_BOT=${JSON.stringify(BOT)};` : ''}</script>
-<script src="${base}assets/site.js"></script>
+<script src="${base}assets/site.js?v=${V_JS}"></script>
 `;
 }
 
