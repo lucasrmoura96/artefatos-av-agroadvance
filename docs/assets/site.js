@@ -88,6 +88,8 @@
   var MANUAL = window.AV_MANUAL || null;
   var AREAS = window.AV_AREAS || {};
   var BOT = window.AV_BOT || null;
+  var SOL = window.AV_SOLUCOES || {};
+  var ORIG = window.AV_ORIGENS || {};
   var palco = document.getElementById('guiaPalco');
 
   if (MANUAL && BOT && palco) {
@@ -97,7 +99,8 @@
 
     /* ---------------- estado ---------------- */
     function zera() {
-      st = { fmt: null, cfg: null, area: null, i: 0, verificado: [], atalhoDe: null };
+      st = { fmt: null, cfg: null, area: null, i: 0, verificado: [], atalhoDe: null,
+             equip: null, sintoma: null };
       pilha = [];
       render();
     }
@@ -343,24 +346,111 @@
       }).join('') + '</div>';
     }
 
+    // acha o equipamento com solucao catalogada para este ponto
+    function equipDoPonto(p) {
+      var ks = p.mod.k || [];
+      for (var i = 0; i < ks.length; i++) if (SOL[ks[i]]) return { chave: ks[i], eq: SOL[ks[i]] };
+      return null;
+    }
+
+    function selo(sin) {
+      var org = ORIG[sin.origem] || { rotulo: sin.origem, tom: 'neutro' };
+      return '<p class="passo-fonte"><span class="selo selo-' + org.tom + '">' + org.rotulo +
+        '</span> ' + sin.fonte + '</p>';
+    }
+
+    function botoesSintoma(eq, exceto) {
+      return eq.sintomas.map(function (sin, i) {
+        if (exceto && sin.s === exceto) return '';
+        var org = ORIG[sin.origem] || { rotulo: '' };
+        return '<button class="escolha escolha-sint" type="button" data-vai="sintoma" data-i="' + i + '">' +
+          '<b>' + sin.s + '</b><small>' + sin.passos.length + ' passos \u00b7 ' + org.rotulo + '</small></button>';
+      }).join('');
+    }
+
     function telaAchou(p) {
+      var e = equipDoPonto(p);
       var caso = (BOT.resolvidos[st.fmt] || []).filter(function (r) {
         return (r.chaves || []).some(function (k) { return (p.mod.k || []).indexOf(k) >= 0; });
       })[0];
+      var blocoCaso = caso
+        ? '<div class="caso"><span class="caso-rot">J\u00e1 encerrado antes neste ponto</span>' +
+          '<b>' + caso.titulo + '</b><p>' + caso.solucao + '</p></div>'
+        : '';
+
+      if (!e) {
+        troca('<div class="cartao cartao-ok">' +
+          '<span class="cartao-eyebrow">Ponto prov\u00e1vel</span>' +
+          '<h2 class="cartao-titulo">' + p.mod.nome + '</h2>' +
+          (p.mod.papel ? '<p class="cartao-ajuda">' + p.mod.papel + '</p>' : '') +
+          (blocoCaso || '<p class="cartao-nota">N\u00e3o h\u00e1 solu\u00e7\u00e3o catalogada para este ponto ainda.</p>') +
+          checados() + rodape() + '</div>');
+        return;
+      }
+
+      st.equip = e.chave;
+      troca('<div class="cartao cartao-ok">' +
+        '<span class="cartao-eyebrow">Ponto prov\u00e1vel \u00b7 ' + e.eq.nome + '</span>' +
+        '<h2 class="cartao-titulo">O que est\u00e1 acontecendo com ele?</h2>' +
+        blocoCaso +
+        '<div class="escolhas escolhas-grade">' + botoesSintoma(e.eq) + '</div>' +
+        checados() +
+        '<div class="cartao-pe">' +
+          '<button class="btn btn-ghost" type="button" data-vai="paraIA">N\u00e3o \u00e9 nada disso \u00b7 levar para a IA</button>' +
+          '<button class="btn btn-ghost" type="button" data-vai="reiniciar">Come\u00e7ar de novo</button>' +
+        '</div></div>');
+    }
+
+    acoes.sintoma = function (b) {
+      guarda();
+      var eq = SOL[st.equip];
+      var sin = eq.sintomas[Number(b.getAttribute('data-i'))];
+      st.sintoma = sin.s;
 
       troca('<div class="cartao cartao-ok">' +
-        '<span class="cartao-eyebrow">Ponto provável</span>' +
-        '<h2 class="cartao-titulo">' + p.mod.nome + '</h2>' +
-        (p.mod.papel ? '<p class="cartao-ajuda">' + p.mod.papel + '</p>' : '') +
-        (caso
-          ? '<div class="caso"><span class="caso-rot">Caso já encerrado sobre este ponto</span>' +
-            '<b>' + caso.titulo + '</b><p>' + caso.solucao + '</p></div>'
-          : '<p class="cartao-nota">O manual descreve o que este ponto faz, mas não traz o conserto — ' +
-            'isso não está nos documentos do time.</p>') +
+        '<span class="cartao-eyebrow">' + eq.nome + '</span>' +
+        '<h2 class="cartao-titulo">' + sin.s + '</h2>' +
+        '<ol class="passos">' + sin.passos.map(function (x) { return '<li>' + x + '</li>'; }).join('') + '</ol>' +
+        (sin.nota ? '<p class="passo-nota">' + sin.nota + '</p>' : '') +
+        selo(sin) +
+        '<p class="cartao-q">Resolveu?</p>' +
+        '<div class="escolhas">' +
+          '<button class="escolha escolha-sim" type="button" data-vai="resolveu">Sim, resolveu</button>' +
+          '<button class="escolha escolha-nao" type="button" data-vai="naoResolveu">N\u00e3o resolveu</button>' +
+        '</div></div>');
+    };
+
+    acoes.resolveu = function () {
+      var eq = SOL[st.equip];
+      troca('<div class="cartao cartao-ok">' +
+        '<span class="cartao-eyebrow">Fechado</span>' +
+        '<h2 class="cartao-titulo">Resolvido. Agora registre.</h2>' +
+        '<p class="cartao-ajuda">Anote no artefato do formato: <b>' + eq.nome + '</b>, sintoma ' +
+        '\u201c' + st.sintoma + '\u201d, resolvido. \u00c9 assim que o manual deixa de mandar gente adivinhar.</p>' +
         checados() +
-        rodape() +
-        '</div>');
-    }
+        '<div class="cartao-pe">' +
+          '<a class="btn btn-primary" href="./' + cfgAtual().cfg.ancora + '">Abrir o manual</a>' +
+          '<button class="btn btn-ghost" type="button" data-vai="reiniciar">Come\u00e7ar de novo</button>' +
+        '</div></div>');
+    };
+
+    acoes.naoResolveu = function () {
+      guarda();
+      var eq = SOL[st.equip];
+      var outros = botoesSintoma(eq, st.sintoma);
+
+      troca('<div class="cartao cartao-aviso">' +
+        '<span class="cartao-eyebrow">N\u00e3o resolveu</span>' +
+        '<h2 class="cartao-titulo">Duas sa\u00eddas daqui</h2>' +
+        '<p class="cartao-ajuda">Ou o sintoma \u00e9 outro dentro do mesmo equipamento, ou o manual n\u00e3o cobre ' +
+        'este caso \u2014 e a\u00ed vale levar para a IA com o caminho que voc\u00ea j\u00e1 percorreu.</p>' +
+        (outros ? '<div class="escolhas escolhas-grade">' + outros + '</div>' : '') +
+        '<div class="cartao-pe">' +
+          '<button class="btn btn-green" type="button" data-vai="paraIA">Levar para a IA</button>' +
+          '<button class="btn btn-outline" type="button" data-vai="outraArea">Checar outra \u00e1rea</button>' +
+          '<button class="btn btn-ghost" type="button" data-vai="reiniciar">Come\u00e7ar de novo</button>' +
+        '</div></div>');
+    };
 
     function telaResolvido(ref) {
       var r = (BOT.resolvidos[st.fmt] || [])[ref];
@@ -449,6 +539,8 @@
       st.verificado.forEach(function (v) {
         l.push('- ' + v.nome + ': ' + (v.r === 'ok' ? 'ok' : v.r === 'falhou' ? 'é aqui' : 'não verificado'));
       });
+      if (st.equip && SOL[st.equip]) l.push('- Equipamento suspeito: ' + SOL[st.equip].nome);
+      if (st.sintoma) l.push('- Sintoma do manual que tentei, sem resolver: ' + st.sintoma);
       window.location.href = './' + c.formato.slug + '/?cfg=' + encodeURIComponent(c.cfg.nome) +
         '&area=' + encodeURIComponent(m.rotulo) + '&trilha=' + encodeURIComponent(l.join('\n')) + '#ia';
     };

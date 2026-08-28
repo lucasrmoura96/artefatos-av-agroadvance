@@ -4,6 +4,7 @@ import { readFileSync, writeFileSync, mkdirSync, copyFileSync, rmSync } from 'no
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
+import { SOLUCOES, ORIGENS } from './solucoes.mjs';
 
 const RAIZ = dirname(fileURLToPath(import.meta.url));
 const CONT = join(RAIZ, 'conteudo');
@@ -150,8 +151,8 @@ const CADEIAS = {
       ]],
       ['Slides', 'slides', [
         ['Splitter HDMI', 'uma saída no telão, outra na ATEM', 'on', 'slides'],
-        ['Notebook do operador', 'configuração A: professor não mexe no computador', 'on', 'nb-operador'],
-        ['Notebook do professor', 'configuração B: segunda mesa no meio do auditório', 'bkp', 'nb-professor'],
+        ['Notebook do operador', 'configuração A: professor não mexe no computador', 'on', 'slides nb-operador'],
+        ['Notebook do professor', 'configuração B: segunda mesa no meio do auditório', 'bkp', 'slides nb-professor'],
       ]],
       ['Corte', 'imagem', [
         ['ATEM Extreme ISO', '4 das 8 entradas em uso', 'on', 'atem'],
@@ -191,7 +192,7 @@ const CADEIAS = {
       estagios: [
         ['Câmeras', 'imagem', [['Câmeras via Zoom', 'professor, host e AV na sala', 'on', 'zoom-cam']]],
         ['Áudio', 'audio', [['Áudio nativo do Zoom', 'sem mesa, sem lapela', 'on', 'zoom-audio']]],
-        ['Slides', 'slides', [['Compartilhados no Zoom', 'o mockup do vMix combina slide e professor', 'on', 'slides']]],
+        ['Slides', 'slides', [['Compartilhados no Zoom', 'o mockup do vMix combina slide e professor', 'on', 'slides-zoom']]],
         ['Corte', 'imagem', [['ATEM', 'não entra neste formato', 'off', 'atem atem-ssd']]],
         ['Encode', 'transmissao', [
           ['vMix + plugin Zoom', 'mockup visual da Agroadvance', 'on', 'vmix'],
@@ -207,7 +208,7 @@ const CADEIAS = {
       estagios: [
         ['Câmeras', 'imagem', [['Câmeras nativas do Zoom', '', 'on', 'zoom-cam']]],
         ['Áudio', 'audio', [['Áudio nativo do Zoom', '', 'on', 'zoom-audio']]],
-        ['Slides', 'slides', [['Compartilhados no Zoom', '', 'on', 'slides']]],
+        ['Slides', 'slides', [['Compartilhados no Zoom', '', 'on', 'slides-zoom']]],
         ['Corte', 'imagem', [['ATEM', 'não entra neste formato', 'off', 'atem atem-ssd']]],
         ['Encode', 'transmissao', [['vMix', 'não entra neste formato', 'off', 'vmix']]],
         ['Transmissão', 'transmissao', [['Vimeo', 'não entra neste formato', 'off', 'vimeo']]],
@@ -242,7 +243,7 @@ const CADEIAS = {
       estagios: [
         ['Câmeras', 'imagem', [['Câmeras via Zoom', 'professor e AV', 'on', 'zoom-cam']]],
         ['Áudio', 'audio', [['Áudio nativo do Zoom', '', 'on', 'zoom-audio']]],
-        ['Slides', 'slides', [['Compartilhados no Zoom', 'inputs organizados no vMix', 'on', 'slides']]],
+        ['Slides', 'slides', [['Compartilhados no Zoom', 'inputs organizados no vMix', 'on', 'slides-zoom']]],
         ['Corte', 'imagem', [['ATEM', 'não entra neste formato', 'off', 'atem atem-ssd']]],
         ['Registro', 'gravacao', [
           ['vMix', 'gravação principal, inputs no padrão visual', 'on', 'vmix'],
@@ -508,6 +509,27 @@ FORMATOS.forEach((f) => {
     indexa({ t: r.titulo, s: 'Já resolvido · ' + r.solucao.slice(0, 74), h: `{B}${f.slug}/#resolvidos`, g: '✓', o: f.nav, k: 'ruido resolvido historico isolador' });
   });
 });
+Object.entries(SOLUCOES).forEach(([chave, eq]) => {
+  eq.sintomas.forEach((sin, i) => {
+    indexa({
+      t: sin.s,
+      s: `${eq.nome} · ${sin.passos.length} passos · ${ORIGENS[sin.origem].rotulo}`,
+      h: `{B}equipamentos/#${chave}`,
+      g: '!',
+      o: eq.nome,
+      k: `${eq.nome} ${eq.resumo} ${sin.passos.join(' ')} ${sin.nota || ''}`,
+    });
+  });
+  indexa({
+    t: eq.nome,
+    s: eq.resumo,
+    h: `{B}equipamentos/#${chave}`,
+    g: '#',
+    o: 'Equipamento',
+    k: eq.sintomas.map((x) => x.s).join(' '),
+  });
+});
+
 if (GATILHOS.aovivo) {
   indexa({ t: GATILHOS.aovivo.titulo, s: GATILHOS.aovivo.itens.join(' · '), h: '{B}aulas-ao-vivo/#gatilhos', g: '⚡', o: 'Aulas ao vivo', k: 'contingencia internet instavel limite lives vimeo vmix' });
 }
@@ -516,9 +538,10 @@ if (GATILHOS.aovivo) {
  * 10. Casca
  * ==================================================================== */
 function pagina({ titulo, desc, atual, corpo, base, indiceJson, manualJson }) {
-  const nav = FORMATOS
-    .map((f) => `<a href="${base}${f.slug}/"${atual === f.slug ? ' aria-current="page"' : ''}>${esc(f.nav)}</a>`)
-    .join('');
+  const nav = [
+    ...FORMATOS.map((f) => ({ href: `${base}${f.slug}/`, nome: f.nav, id: f.slug })),
+    { href: `${base}equipamentos/`, nome: 'Equipamentos', id: 'equipamentos' },
+  ].map((n) => `<a href="${n.href}"${atual === n.id ? ' aria-current="page"' : ''}>${esc(n.nome)}</a>`).join('');
 
   return `<meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -579,7 +602,7 @@ ${corpo}
 <div id="toast" role="status" aria-live="polite"><span class="ok">${IC.check}</span><span class="msg"></span></div>
 <button id="aoTopo" type="button" aria-label="Voltar ao topo">${IC.topo}</button>
 
-<script>window.AV_INDICE=${indiceJson};${manualJson ? `window.AV_MANUAL=${manualJson};window.AV_AREAS=${JSON.stringify(AREAS)};window.AV_BOT=${JSON.stringify(BOT)};` : ''}</script>
+<script>window.AV_INDICE=${indiceJson};${manualJson ? `window.AV_MANUAL=${manualJson};window.AV_AREAS=${JSON.stringify(AREAS)};window.AV_BOT=${JSON.stringify(BOT)};window.AV_SOLUCOES=${JSON.stringify(SOLUCOES)};window.AV_ORIGENS=${JSON.stringify(ORIGENS)};` : ''}</script>
 <script src="${base}assets/site.js?v=${V_JS}"></script>
 `;
 }
@@ -802,6 +825,94 @@ ${bruto('raw-descritivo', descritivo)}`;
 }
 
 /* ==================================================================== *
+ * 12b. Modulo de equipamentos — drilldown: equipamento -> sintoma -> passos
+ * ==================================================================== */
+function passosHTML(sin) {
+  const org = ORIGENS[sin.origem];
+  return `<ol class="passos">${sin.passos.map((p) => `<li>${esc(p)}</li>`).join('')}</ol>
+            ${sin.nota ? `<p class="passo-nota">${esc(sin.nota)}</p>` : ''}
+            <p class="passo-fonte"><span class="selo selo-${org.tom}">${esc(org.rotulo)}</span> ${esc(sin.fonte)}</p>`;
+}
+
+function corpoEquipamentos() {
+  const chaves = Object.keys(SOLUCOES);
+  const totalSintomas = chaves.reduce((n, k) => n + SOLUCOES[k].sintomas.length, 0);
+
+  // em que configuracoes cada equipamento entra — vem das cadeias, nao de palpite
+  const ondeEntra = (chave) => {
+    const onde = [];
+    FORMATOS.forEach((f) => {
+      CADEIAS[f.cadeias].forEach((c) => {
+        c.estagios.forEach(([, , mods]) => {
+          mods.forEach((m) => {
+            if (String(m[3] || '').split(/\s+/).includes(chave) && m[2] !== 'off') {
+              const r = `${f.nav} · ${c.nome}`;
+              if (!onde.includes(r)) onde.push(r);
+            }
+          });
+        });
+      });
+    });
+    return onde;
+  };
+
+  const blocos = chaves.map((chave) => {
+    const eq = SOLUCOES[chave];
+    const onde = ondeEntra(chave);
+
+    const sintomas = eq.sintomas.map((sin, i) => `        <details class="sint">
+          <summary>
+            <span class="sint-n">${i + 1}</span>
+            <span class="sint-t">${esc(sin.s)}</span>
+            <span class="sint-meta">${sin.passos.length} passos</span>
+            ${IC.chev}
+          </summary>
+          <div class="sint-corpo">
+            ${passosHTML(sin)}
+          </div>
+        </details>`).join('\n');
+
+    return `      <details class="eq" id="${chave}">
+        <summary>
+          <span class="eq-t">
+            <b>${esc(eq.nome)}</b>
+            <small>${esc(eq.resumo)}</small>
+          </span>
+          <span class="eq-conta">${eq.sintomas.length}</span>
+          ${IC.chev}
+        </summary>
+        <div class="eq-corpo">
+          ${onde.length ? `<p class="eq-onde"><b>Entra em:</b> ${onde.map(esc).join(' · ')}</p>` : ''}
+${sintomas}
+        </div>
+      </details>`;
+  }).join('\n');
+
+  return `<main>
+  <div class="hero-curto">
+    <div class="wrap">
+      <span class="eyebrow">Equipamentos · ${chaves.length} peças · ${totalSintomas} sintomas</span>
+      <h1>Consulta por equipamento</h1>
+      <p class="lead">Abra o equipamento, depois o sintoma. Cada solução diz de onde veio: documento do time, fabricante, ou prática de operação. Se souber o sintoma mas não o equipamento, <button class="link-botao" data-abre-paleta type="button">busque</button> — ou use o guia na página inicial.</p>
+      <div class="legenda-origem">
+        <span class="selo selo-verde">Documento do time</span>
+        <span class="selo selo-azul">Fabricante</span>
+        <span class="selo selo-neutro">Prática de operação</span>
+      </div>
+    </div>
+  </div>
+
+  <section>
+    <div class="wrap">
+      <div class="eqs">
+${blocos}
+      </div>
+    </div>
+  </section>
+</main>`;
+}
+
+/* ==================================================================== *
  * 13. Escrita
  * ==================================================================== */
 rmSync(OUT, { recursive: true, force: true });
@@ -822,6 +933,7 @@ writeFileSync(join(OUT, '.nojekyll'), '');
 
 // os formatos primeiro: eles alimentam o indice com as secoes dos documentos
 const corpos = FORMATOS.map((f) => ({ f, corpo: corpoFormato(f) }));
+const corpoEquip = corpoEquipamentos();
 
 writeFileSync(join(OUT, 'index.html'), home());
 for (const { f, corpo } of corpos) {
@@ -836,4 +948,14 @@ for (const { f, corpo } of corpos) {
   }));
 }
 
-console.log(`ok — ${FORMATOS.length + 1} páginas, ${INDICE.length} itens na busca`);
+mkdirSync(join(OUT, 'equipamentos'), { recursive: true });
+writeFileSync(join(OUT, 'equipamentos', 'index.html'), pagina({
+  titulo: 'Equipamentos · Manual de AV Agroadvance',
+  desc: 'Consulta por equipamento: sintomas e passos de solução, com a origem de cada um.',
+  atual: 'equipamentos',
+  corpo: corpoEquip,
+  base: '../',
+  indiceJson: indicePara('../'),
+}));
+
+console.log(`ok — ${FORMATOS.length + 2} páginas, ${INDICE.length} itens na busca, ${Object.keys(SOLUCOES).length} equipamentos`);

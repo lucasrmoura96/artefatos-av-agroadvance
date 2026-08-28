@@ -650,3 +650,120 @@ footer a:hover{color:var(--brand-green-dark);border-color:var(--brand-green-dark
   .guia-veio{margin:0 16px}
   #aoTopo{right:14px;bottom:14px}
 }
+
+/* ==========================================================================
+   SOLUÇÕES — passos, origem, e o drilldown de equipamentos
+   ========================================================================== */
+
+/* passos numerados */
+.passos{margin:16px 0 0;padding-left:0;list-style:none;counter-reset:passo}
+.passos li{
+  counter-increment:passo;position:relative;
+  padding:10px 12px 10px 42px;margin-bottom:5px;border-radius:var(--r-md);
+  background:var(--c-bg);font-size:var(--t-sm);color:var(--c-text);line-height:1.5;
+}
+.passos li::before{
+  content:counter(passo);position:absolute;left:11px;top:10px;
+  width:21px;height:21px;border-radius:var(--r-xs);display:grid;place-items:center;
+  font-family:var(--fm);font-size:10.5px;
+  background:var(--brand-green-dark);color:#fff;
+}
+[data-theme="dark"] .passos li::before{color:#052A11}
+
+.passo-nota{
+  margin-top:12px;padding:11px 13px;border-radius:var(--r-md);
+  background:var(--c-warning-soft);font-size:var(--t-xs);color:var(--c-text);line-height:1.5;
+}
+[data-theme="dark"] .passo-nota{background:rgba(202,138,4,.14);color:var(--c-muted)}
+
+.passo-fonte{
+  display:flex;align-items:center;gap:9px;flex-wrap:wrap;
+  margin-top:13px;font-size:var(--t-micro);color:var(--c-tertiary);line-height:1.4;
+}
+
+/* selo de origem: de onde a solução veio */
+.selo{
+  flex:0 0 auto;font-size:9.5px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;
+  padding:3px 8px;border-radius:var(--r-pill);white-space:nowrap;
+}
+.selo-verde{background:var(--badge-green-bg);color:var(--badge-green-fg)}
+.selo-azul{background:rgba(30,64,175,.10);color:#1e40af}
+[data-theme="dark"] .selo-azul{background:rgba(147,197,253,.16);color:#93C5FD}
+.selo-neutro{background:var(--c-bg);color:var(--c-muted);box-shadow:inset 0 0 0 1px var(--c-border-strong)}
+
+.legenda-origem{display:flex;flex-wrap:wrap;gap:7px;margin-top:16px}
+
+/* botão de sintoma no guia */
+.escolha-sint{display:flex;flex-direction:column;gap:3px;align-items:flex-start}
+.escolha-sint b{font-size:var(--t-sm);font-weight:600;line-height:1.3}
+.escolha-sint small{font-size:11px;font-weight:400;color:var(--c-tertiary)}
+.escolha-sint:hover small{color:var(--c-muted)}
+
+/* link em forma de botão, no meio de um parágrafo */
+.link-botao{
+  cursor:pointer;color:var(--brand-green-dark);font:inherit;font-weight:600;
+  border-bottom:1px solid var(--brand-green-dark);padding:0;
+}
+.link-botao:hover{color:var(--c-text);border-color:var(--c-text)}
+
+/* ---------- drilldown: equipamento → sintoma → passos ---------- */
+.eqs{display:grid;gap:10px}
+
+.eq{
+  background:var(--c-surface);border:1px solid var(--c-border);
+  border-radius:var(--r-xl);box-shadow:var(--sh-1);overflow:hidden;
+  scroll-margin-top:calc(var(--topbar-h) + 16px);
+}
+.eq > summary{
+  display:flex;align-items:center;gap:13px;cursor:pointer;padding:15px 18px;list-style:none;
+  transition:background .16s;
+}
+.eq > summary::-webkit-details-marker{display:none}
+.eq > summary:hover{background:var(--c-surface-2)}
+.eq-t{flex:1;min-width:0}
+.eq-t b{display:block;font-family:var(--fd);font-size:16px;font-weight:600;letter-spacing:-.018em;color:var(--c-text)}
+.eq-t small{display:block;margin-top:3px;font-size:var(--t-xs);color:var(--c-tertiary);line-height:1.4}
+.eq-conta{
+  flex:0 0 auto;font-family:var(--fm);font-size:11px;
+  min-width:24px;height:24px;padding:0 7px;border-radius:var(--r-pill);
+  display:grid;place-items:center;
+  background:var(--c-bg);color:var(--c-muted);
+}
+.eq > summary .chev{flex:0 0 auto;color:var(--c-tertiary);transition:transform .26s var(--mola)}
+.eq[open] > summary{border-bottom:1px solid var(--c-border)}
+.eq[open] > summary .chev{transform:rotate(180deg)}
+.eq[open] .eq-conta{background:var(--badge-green-bg);color:var(--badge-green-fg)}
+.eq-corpo{padding:14px 18px 18px}
+.eq-onde{
+  margin-bottom:12px;padding:10px 12px;border-radius:var(--r-md);
+  background:var(--c-bg);font-size:var(--t-xs);color:var(--c-muted);line-height:1.45;
+}
+.eq-onde b{color:var(--c-text);font-weight:600}
+
+.sint{border:1px solid var(--c-border);border-radius:var(--r-md);overflow:hidden}
+.sint + .sint{margin-top:7px}
+.sint > summary{
+  display:flex;align-items:center;gap:11px;cursor:pointer;padding:11px 13px;list-style:none;
+  transition:background .16s;
+}
+.sint > summary::-webkit-details-marker{display:none}
+.sint > summary:hover{background:var(--c-surface-2)}
+.sint-n{
+  flex:0 0 auto;width:20px;height:20px;border-radius:var(--r-xs);display:grid;place-items:center;
+  font-family:var(--fm);font-size:10px;background:var(--c-bg);color:var(--c-muted);
+}
+.sint-t{flex:1;min-width:0;font-size:var(--t-sm);font-weight:600;color:var(--c-text);line-height:1.35}
+.sint-meta{flex:0 0 auto;font-family:var(--fm);font-size:10px;color:var(--c-tertiary)}
+.sint > summary .chev{flex:0 0 auto;color:var(--c-tertiary);transition:transform .24s var(--mola)}
+.sint[open] > summary{background:var(--c-surface-2);border-bottom:1px solid var(--c-border)}
+.sint[open] > summary .chev{transform:rotate(180deg)}
+.sint[open] .sint-n{background:var(--brand-green-dark);color:#fff}
+[data-theme="dark"] .sint[open] .sint-n{color:#052A11}
+.sint-corpo{padding:4px 13px 14px}
+.sint-corpo .passos{margin-top:10px}
+
+@media (max-width:600px){
+  .eq-corpo{padding:12px 13px 15px}
+  .sint-meta{display:none}
+  .passos li{padding:10px 11px 10px 40px}
+}
