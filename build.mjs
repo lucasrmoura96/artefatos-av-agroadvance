@@ -313,6 +313,7 @@ const ATALHOS = [
   {
     // descritivo do evento, secao 9
     fmt: 'evento-presencial-sede',
+    cfgs: [0],
     area: 'audio',
     pergunta: 'O som está com ruído, chiado ou estática?',
     simTipo: 'resolvido',
@@ -320,8 +321,11 @@ const ATALHOS = [
     naoNota: 'Então não é o caso já encerrado. Vamos percorrer a cadeia de áudio.',
   },
   {
-    // descritivo das aulas ao vivo, secao 4
+    // descritivo das aulas ao vivo, secao 4. So' no hibrido: o documento diz
+    // "contingencia do hibrido", e em Somente Zoom a pessoa JA esta no
+    // destino da contingencia — perguntar ali seria absurdo.
     fmt: 'aulas-ao-vivo',
+    cfgs: [1],
     area: 'transmissao',
     pergunta: 'A transmissão caiu, travou ou não subiu?',
     simTipo: 'gatilhos',

@@ -205,11 +205,13 @@
     /* ---------- 3. atalho documentado, se houver ---------- */
     function atalhoOuCadeia() {
       var at = BOT.atalhos.filter(function (a) {
-        return a.fmt === st.fmt && a.area === st.area;
+        if (a.fmt !== st.fmt || a.area !== st.area) return false;
+        // o atalho vale só nas configurações que ele declara
+        return !a.cfgs || a.cfgs.indexOf(st.cfg) >= 0;
       })[0];
 
-      if (at && !st.atalhoFeito) {
-        st.atalhoFeito = true;
+      if (at && st.atalhoFeito !== st.area) {
+        st.atalhoFeito = st.area;
         bolha('<span class="msg-corpo">' + at.pergunta + '</span>');
         opcoes([
           {
